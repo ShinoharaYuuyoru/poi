@@ -2,7 +2,7 @@
 //                                 Debug Suite                                  //
 //////////////////////////////////////////////////////////////////////////////////
 
-const colors = require('colors/safe')
+const chalk = require('chalk')
 
 // Debug wrapper class is only for the purpose of beautifying
 // when certain function is called through the dev-tool console.
@@ -21,6 +21,7 @@ class Debug {
 }
 
 // Globals
+// eslint-disable-next-line no-console
 console.assert(process, "process doesn't exist")
 
 // The debug instance depends on Electron process type
@@ -41,7 +42,7 @@ const definePureVirtual = (obj, name, defaultReturn = false) =>
     },
     writable: true,
   }
-)
+  )
 
 // the very base class
 class IDebugger {
@@ -55,6 +56,7 @@ class IDebugger {
 
   get assert() {
     if (this.isEnabled()) {
+      // eslint-disable-next-line no-console
       return console.assert.bind(console)
     } else {
       return doNothing
@@ -115,6 +117,7 @@ class DebuggerBase extends IDebugger {
 
   validateTagName(tag) {
     const valid = typeof tag === 'string' && tag.length > 0
+    // eslint-disable-next-line no-console
     console.assert(valid, 'You must pass a non-empty string! Current:', tag)
     return valid
   }
@@ -211,10 +214,11 @@ Object.defineProperty(DebuggerBase.prototype, 'h', {
   enumerable: true,
 })
 
-// For the Browser Process
-class DebuggerBrowser extends DebuggerBase {
+// For the Main Process
+class DebuggerMain extends DebuggerBase {
   _getLogFunc(prefix) {
-    return console.log.bind(console, colors.cyan(`${prefix} %s`))
+    // eslint-disable-next-line no-console
+    return console.log.bind(console, chalk.cyan(`${prefix} %s`))
   }
 
   init() {
@@ -263,12 +267,13 @@ class Booster {
 
 // For the Renderer Processes
 class DebuggerRenderer extends DebuggerBase {
-  style = 'background: linear-gradient(30deg, cyan, white 3ex)'
   _getLogFunc(prefix) {
     if (prefix != null) {
-      return console.debug.bind(console, `%c${prefix}`, this.style)
+      // eslint-disable-next-line no-console
+      return console.log.bind(console, `%c${prefix}`, 'background: linear-gradient(30deg, cyan, white 3ex)')
     } else {
-      return console.debug.bind(console)
+      // eslint-disable-next-line no-console
+      return console.log.bind(console)
     }
   }
   init() {
@@ -291,10 +296,11 @@ class DebuggerRenderer extends DebuggerBase {
       }
       output[opt] = new Booster(this.h[opt], 'extra', relist)
     }
+    // eslint-disable-next-line no-console
     console.table(output)
   }
 }
 
-const dbg = isRenderer ? new DebuggerRenderer : new DebuggerBrowser
+const dbg = isRenderer ? new DebuggerRenderer : new DebuggerMain
 
 export default dbg

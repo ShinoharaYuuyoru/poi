@@ -1,22 +1,21 @@
-import { ToastContainer, ToastMessage } from 'react-toastr'
-import { join } from 'path'
-import React from 'react'
+import { ToastContainer, ToastMessageAnimated  } from 'react-toastr'
+import React, { PureComponent } from 'react'
+import { toastInitializer } from 'views/env-parts/toast'
 
-const ToastMessageFactory = React.createFactory(ToastMessage.animation)
+import './assets/toast-animate.css'
+import './assets/toast.css'
 
-class Toastr extends React.Component {
+const ToastMessageFactory = React.createFactory(ToastMessageAnimated)
+
+class Toastr extends PureComponent {
   componentDidMount = () => {
-    window.toastInitializer(this.refs.container)
+    toastInitializer(this.container)
   }
   render () {
     return (
-      <div>
-      <link rel="stylesheet" href={join(__dirname, 'assets', 'toast-animate.css')} />
-      <link rel="stylesheet" href={join(__dirname, 'assets', 'toast.css')} />
-        <ToastContainer ref="container"
-                        toastMessageFactory={ToastMessageFactory}
-                        className="toast-poi" />
-      </div>
+      <ToastContainer ref={ref => { this.container = ref }}
+        toastMessageFactory={ToastMessageFactory}
+        className="toast-poi" />
     )
   }
 }

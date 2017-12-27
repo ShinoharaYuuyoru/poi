@@ -91,7 +91,7 @@ const statusInitState = {
   bossCell: -1,
   currentCell: -1,
   enemyFormation: 0, // Formation: 0 - 単縦陣, 1 - 複縦陣, 2 - 輪形陣, 3 - 梯形陣, 4 - 単横陣,
-    // 5 - 第一警戒航行序列, 6 - 第二警戒航行序列, 7 - 第三警戒航行序列, 8 - 第四警戒航行序列
+  // 5 - 第一警戒航行序列, 6 - 第二警戒航行序列, 7 - 第三警戒航行序列, 8 - 第四警戒航行序列
   colorNo: -1,
   packet: [],
   battle: null,
@@ -156,7 +156,8 @@ export function reducer(state=initState, {type, path, body, postBody, time}) {
   case '@@Response/kcsapi/api_req_battle_midnight/sp_midnight':
   case '@@Response/kcsapi/api_req_combined_battle/midnight_battle':
   case '@@Response/kcsapi/api_req_combined_battle/sp_midnight':
-  case '@@Response/kcsapi/api_req_combined_battle/ec_midnight_battle': {
+  case '@@Response/kcsapi/api_req_combined_battle/ec_midnight_battle':
+  case '@@Response/kcsapi/api_req_combined_battle/ec_night_to_day': {
     const sortieTypeFlag = getSortieType()
     const enemyFormation = (body.api_formation || [])[1] || _status.enemyFormation
     const fleetId = [body.api_deck_id, body.api_dock_id].find((x) => x != null)

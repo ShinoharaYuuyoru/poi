@@ -1,3 +1,10 @@
+poi-main {
+  display: flex;
+  flex-flow: column nowrap;
+}
 hr {
   display: none;
+}
+poi-app {
+  overflow: hidden;
 }

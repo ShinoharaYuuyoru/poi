@@ -17,7 +17,7 @@ import { log, error } from './utils'
 
 const {ROOT} = global
 
-const fs = bluebird.promisifyAll(require('fs-extra'))
+const fs = require('fs-extra')
 const zlib = bluebird.promisifyAll(require('zlib'))
 
 const resolveBody = (encoding, body) => {
@@ -87,6 +87,8 @@ const findHack = (pathname) => {
     fs.accessSync(loc, fs.R_OK)
     return loc
   } catch (e) {
+    if (e.code !== 'ENOENT')
+      console.error(`error while loading hack file ${loc}`,e)
     return null
   }
 }
@@ -204,7 +206,7 @@ class Proxy extends EventEmitter {
           }
           // Use cache file
           if (cacheFile){
-            const stats = await fs.statAsync(cacheFile)
+            const stats = await fs.stat(cacheFile)
             // Cache is new
             if (req.headers['if-modified-since'] && (new Date(req.headers['if-modified-since']) >= stats.mtime)) {
               res.writeHead(304, {
@@ -214,11 +216,11 @@ class Proxy extends EventEmitter {
               res.end()
             } else {
               // Cache is old
-              const data = await fs.readFileAsync(cacheFile)
+              const data = await fs.readFile(cacheFile)
               res.writeHead(200, {
                 'Server': 'nginx',
                 'Content-Length': data.length,
-                'Content-Type': mime.lookup(cacheFile),
+                'Content-Type': mime.getType(cacheFile),
                 'Last-Modified': stats.mtime.toGMTString(),
               })
               res.end(data)
@@ -372,7 +374,7 @@ class Proxy extends EventEmitter {
       error(err)
     })
     const listenPort = config.get('proxy.port', 0)
-    this.server.listen(listenPort, '127.0.0.1', () => {
+    this.server.listen(listenPort, config.get('proxy.allowLAN', false) ? '0.0.0.0' : '127.0.0.1', () => {
       this.port = this.server.address().port
       app.commandLine.appendSwitch('proxy-server', `127.0.0.1:${this.port}`)
       app.commandLine.appendSwitch('ignore-certificate-errors')

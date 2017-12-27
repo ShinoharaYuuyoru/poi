@@ -2,6 +2,14 @@
  * This file contains utility functions that is related to the game mechanism,
  * or formatting instructions to game data.
  */
+import { ProgressBar } from 'react-bootstrap'
+import { addStyle } from 'react-bootstrap/lib/utils/bootstrapUtils'
+import _, { get } from 'lodash'
+
+addStyle(ProgressBar, 'green')
+addStyle(ProgressBar, 'yellow')
+addStyle(ProgressBar, 'orange')
+addStyle(ProgressBar, 'red')
 
 import { between } from './tools'
 
@@ -12,15 +20,18 @@ const aircraftLevelBonus = {
   '8': [0, 0, 0, 0, 0, 0, 0, 0, 0],       // 艦上攻撃機
   '11': [0, 1, 1, 1, 1, 3, 3, 6, 6],      // 水上爆撃機
   '45': [0, 0, 2, 5, 9, 14, 14, 22, 22],  // 水上戦闘機
-  '39': [0, 0, 0, 0, 0, 0, 0, 0, 0],      // 噴式景雲改
-  '40': [0, 0, 0, 0, 0, 0, 0, 0, 0],      // 橘花改
+  '47': [0, 0, 0, 0, 0, 0, 0, 0, 0],       // 陸上攻撃機
+  '48': [0, 0, 2, 5, 9, 14, 14, 22, 22],   // 局地戦闘機 陸軍戦闘機
+  '56': [0, 0, 0, 0, 0, 0, 0, 0, 0],      // 噴式戦闘機
+  '57': [0, 0, 0, 0, 0, 0, 0, 0, 0],      // 噴式戦闘爆撃機
+  '58': [0, 0, 0, 0, 0, 0, 0, 0, 0],      // 噴式攻撃機
 }
 
 const speedInterpretation = {
-  [5]: 'Slow',
-  [10]: 'Fast',
-  [15]: 'Fast+',
-  [20]: 'Fastest',
+  5: 'Slow',
+  10: 'Fast',
+  15: 'Fast+',
+  20: 'Fastest',
 }
 
 const speedStyles = {
@@ -88,9 +99,9 @@ export function getShipLabelStatus(ship, $ship, inRepair, escaped) {
   } else if (Math.min(ship.api_fuel / $ship.api_fuel_max, ship.api_bull / $ship.api_bull_max) < 1) {
     // supply
     return 2
-  } else if ([1, 2, 3, 4, 5, 6].includes(ship.api_sally_area)) {
+  } else if (ship.api_sally_area > 0) {
     // special: locked phase
-    // returns 2 for locked phase 1, 3 for phase 2, etc
+    // returns 3 for locked phase 1, 4 for phase 2, etc
     return ship.api_sally_area + 2
   }
   return -1
@@ -98,29 +109,41 @@ export function getShipLabelStatus(ship, $ship, inRepair, escaped) {
 
 export function getHpStyle(percent) {
   if (percent <= 25) {
-    return 'danger'
+    return 'red'
   } else if (percent <= 50){
-    return 'warning'
+    return 'orange'
   } else if (percent <= 75){
-    return 'info'
+    return 'yellow'
   } else {
-    return 'success'
+    return 'green'
   }
 }
 
-// equipIconId: as in $equip.api_type[3]
-export function equipIsAircraft(equipIconId) {
-  return equipIconId != null && (
-    between(equipIconId, 6, 10) ||
-    between(equipIconId, 21, 22) ||
-    [33, 39, 40, 43, 44].includes(equipIconId)
-  )
+// equip: $equip or $equip.api_type[3]
+export function equipIsAircraft(equip) {
+  if (Number.isInteger(equip)) {
+    return equip != null && (
+      between(equip, 6, 10) ||
+      between(equip, 21, 22) ||
+      between(equip, 37, 40) ||
+      between(equip, 43, 46) ||
+      [33].includes(equip)
+    )
+  } else {
+    const id = get(equip, 'api_type.2', 0)
+    return between(id, 6, 11) ||
+    between(id, 25, 26) ||
+    between(id, 47, 48) ||
+    between(id, 56, 59) ||
+    [41, 45, 94].includes(id)
+  }
 }
 
-export function getTyku(equipsData) {
+export function getTyku(equipsData, landbaseStatus=0) {
   let minTyku = 0
   let maxTyku = 0
   let basicTyku = 0
+  let reconBonus = 1
   for (let i = 0; i < equipsData.length; i++) {
     if (!equipsData[i]) {
       continue
@@ -130,6 +153,9 @@ export function getTyku(equipsData) {
         continue
       }
       const [_equip, $equip, onslot] = equipsData[i][j]
+      if (onslot < 1 || onslot == undefined) {
+        continue
+      }
       let tempTyku = 0.0
       let tempAlv
       // Basic tyku
@@ -140,34 +166,65 @@ export function getTyku(equipsData) {
       }
       // 改修：艦戦×0.2、爆戦×0.25
       const levelFactor = $equip.api_baku > 0 ? 0.25 : 0.2
-      if ([6, 7, 8].includes($equip.api_type[3])) {
-        // 艦载機
+      if ([6, 7, 8, 45, 47, 56, 57, 58].includes($equip.api_type[2])) {
+        // 艦载機 · 水上戦闘機 · 陸上攻撃機 · 噴式機
         tempTyku += Math.sqrt(onslot) * ($equip.api_tyku + (_equip.api_level || 0) * levelFactor)
-        tempTyku += aircraftLevelBonus[$equip.api_type[3]][tempAlv]
+        tempTyku += aircraftLevelBonus[$equip.api_type[2]][tempAlv]
         basicTyku += Math.floor(Math.sqrt(onslot) * $equip.api_tyku)
         minTyku += Math.floor(tempTyku + Math.sqrt(aircraftExpTable[tempAlv] / 10))
-        maxTyku += Math.floor(tempTyku + Math.sqrt(aircraftExpTable[tempAlv + 1] / 10))
-      } else if ([10, 43].includes($equip.api_type[3]) && ($equip.api_type[2] == 11 || $equip.api_type[2] == 45)) {
-        // 水上機
+        maxTyku += Math.floor(tempTyku + Math.sqrt((aircraftExpTable[tempAlv + 1] - 1) / 10))
+      } else if ([11].includes($equip.api_type[2])) {
+        // 水上爆撃機
         tempTyku += Math.sqrt(onslot) * $equip.api_tyku
         tempTyku += aircraftLevelBonus[$equip.api_type[2]][tempAlv]
         basicTyku += Math.floor(Math.sqrt(onslot) * $equip.api_tyku)
         minTyku += Math.floor(tempTyku + Math.sqrt(aircraftExpTable[tempAlv] / 10))
-        maxTyku += Math.floor(tempTyku + Math.sqrt(aircraftExpTable[tempAlv + 1] / 10))
-      } else if ([39, 40].includes($equip.api_type[3])) {
-        // 噴式機
-        tempTyku += Math.sqrt(onslot) * ($equip.api_tyku + (_equip.api_level || 0) * levelFactor)
-        tempTyku += aircraftLevelBonus[$equip.api_type[3]][tempAlv]
+        maxTyku += Math.floor(tempTyku + Math.sqrt((aircraftExpTable[tempAlv + 1] - 1) / 10))
+      } else if ([48].includes($equip.api_type[2])) {
+        // 局戦 · 陸戦
+        let landbaseBonus = 0
+        if (landbaseStatus === 1) landbaseBonus = 1.5 * $equip.api_houk // (対空 ＋ 迎撃 × 1.5)
+        if (landbaseStatus === 2) landbaseBonus = $equip.api_houk + 2 * $equip.api_houm // (対空 ＋ 迎撃 ＋ 対爆 × 2)
+        tempTyku += Math.sqrt(onslot) * ($equip.api_tyku + landbaseBonus + (_equip.api_level || 0) * levelFactor)
+        tempTyku += aircraftLevelBonus[$equip.api_type[2]][tempAlv]
         basicTyku += Math.floor(Math.sqrt(onslot) * $equip.api_tyku)
         minTyku += Math.floor(tempTyku + Math.sqrt(aircraftExpTable[tempAlv] / 10))
-        maxTyku += Math.floor(tempTyku + Math.sqrt(aircraftExpTable[tempAlv + 1] / 10))
+        maxTyku += Math.floor(tempTyku + Math.sqrt((aircraftExpTable[tempAlv + 1] - 1) / 10))
+      } else if ([10, 41].includes($equip.api_type[2])) {
+        // 水偵・飛行艇
+        if (landbaseStatus == 2) {
+          if ($equip.api_saku >= 9) {
+            reconBonus = Math.max(reconBonus, 1.16)
+          } else if ($equip.api_saku == 8) {
+            reconBonus = Math.max(reconBonus, 1.13)
+          } else {
+            reconBonus = Math.max(reconBonus, 1.1)
+          }
+        } else if (landbaseStatus == 1) {
+          tempTyku += Math.sqrt(onslot) * $equip.api_tyku
+          minTyku += Math.floor(tempTyku + Math.sqrt(aircraftExpTable[tempAlv] / 10))
+          maxTyku += Math.floor(tempTyku + Math.sqrt((aircraftExpTable[tempAlv + 1] - 1) / 10))
+        }
+      } else if ([9].includes($equip.api_type[2]) && landbaseStatus == 2) {
+        // 艦偵
+        if (landbaseStatus == 2) {
+          if ($equip.api_saku >= 9) {
+            reconBonus = Math.max(reconBonus, 1.3)
+          } else {
+            reconBonus = Math.max(reconBonus, 1.2)
+          }
+        } else if (landbaseStatus == 1) {
+          tempTyku += Math.sqrt(onslot) * $equip.api_tyku
+          minTyku += Math.floor(tempTyku + Math.sqrt(aircraftExpTable[tempAlv] / 10))
+          maxTyku += Math.floor(tempTyku + Math.sqrt((aircraftExpTable[tempAlv + 1] - 1) / 10))
+        }
       }
     }
   }
   return {
-    basic: basicTyku,
-    min: minTyku,
-    max: maxTyku,
+    basic: Math.floor(basicTyku * reconBonus),
+    min: Math.floor(minTyku * reconBonus),
+    max: Math.floor(maxTyku * reconBonus),
   }
 }
 
@@ -313,16 +370,16 @@ export function getSaku25a(shipsData, equipsData, teitokuLv) {
 //     H(レベル)
 //     M(空き数)
 
-export function getSaku33(shipsData, equipsData, teitokuLv, mapModifier=1.0) {
+export function getSaku33(shipsData, equipsData, teitokuLv, mapModifier=1.0, slotCount = 6) {
   let totalSaku = 0
   let shipSaku = 0
   let equipSaku = 0
   let teitokuSaku = 0
-  let shipCount = 6
+  let emptySlot = slotCount
   for (let i = 0; i < equipsData.length; i++) {
     if (!shipsData[i] || !equipsData[i])
       continue
-    shipCount -= 1
+    emptySlot -= 1
     const [_ship] = shipsData[i]
     let shipPureSaku = _ship.api_sakuteki[0]
     for (let j = 0; j < equipsData[i].length; j++) {
@@ -359,7 +416,7 @@ export function getSaku33(shipsData, equipsData, teitokuLv, mapModifier=1.0) {
   }
   equipSaku *= mapModifier
   teitokuSaku = Math.ceil(teitokuLv * 0.4)
-  totalSaku = shipSaku + equipSaku - teitokuSaku + 2 * shipCount
+  totalSaku = shipSaku + equipSaku - teitokuSaku + 2 * emptySlot
 
   return {
     ship: parseFloat(shipSaku.toFixed(2)),
@@ -370,16 +427,9 @@ export function getSaku33(shipsData, equipsData, teitokuLv, mapModifier=1.0) {
 }
 
 // returns fleet's minimal api_soku value, returns 0 when all elements undefined
-export function getFleetSpeed (shipsData) {
-  const speed = shipsData.reduce((speed, [ship, $ship]) => {
-    return typeof ship != 'undefined' ? Math.min(speed, ship.api_soku) : ship.api_soku
-  }, Infinity)
-
-  return {
-    speed,
-  }
-}
-
+export const getFleetSpeed = (shipsData) => ({
+  speed: _(shipsData).map(([ship = {}] = []) => ship.api_soku || Infinity).min() || 0,
+})
 
 export async function isInGame () {
   try {

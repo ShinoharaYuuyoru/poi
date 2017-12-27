@@ -1,15 +1,15 @@
 {
   "name": "poi",
-  "version": "v7.6.0",
+  "version": "v8.0.0",
   "description": "poi the KanColle Browser Tool",
   "main": "index.js",
   "scripts": {
     "test": "mocha --recursive --harmony --require ./test/babelhook",
     "deploy": "gulp deploy",
-    "build": "gulp build && build",
-    "build_win": "gulp build && build --win --x64 && build --win --ia32",
+    "build": "gulp build && electron-builder",
     "start": "electron .",
-    "start_debug": "electron . --debug",
+    "start_debug": "electron . --dev --inspect",
+    "dev": "electron . --dev --inspect",
     "clean": "gulp clean",
     "lint": "eslint . --ext .es --ext .js --ignore-path .gitignore"
   },
@@ -32,92 +32,99 @@
   },
   "homepage": "https://github.com/poooi/poi",
   "dependencies": {
-    "babel-core": "^6.23.1",
+    "@exponent/electron-cookies": "^2.0.0",
+    "babel-core": "^6.26.0",
     "babel-plugin-add-module-exports": "^0.2.1",
+    "babel-plugin-closure-elimination": "^1.3.0",
+    "babel-plugin-dynamic-import-node": "^1.2.0",
     "babel-preset-es2017-node7": "^0.5.2",
-    "babel-preset-react": "^6.23.0",
-    "babel-preset-stage-0": "^6.22.0",
-    "babel-register": "^6.23.0",
-    "bluebird": "^3.4.0",
-    "bootstrap": "^3.3.7",
+    "babel-preset-react": "^6.24.1",
+    "babel-preset-stage-0": "^6.24.1",
+    "babel-register": "^6.26.0",
+    "bindings": "^1.3.0",
+    "bluebird": "^3.5.1",
+    "chalk": "^2.3.0",
     "classnames": "^2.2.3",
     "coffee-react": "^5.0.0",
-    "coffee-script": "^1.9.3",
-    "colors": "^1.1.2",
+    "coffee-script": "^1.12.7",
+    "create-react-class": "^15.6.2",
     "cson": "^4.0.0",
-    "fast-memoize": "^2.0.2",
-    "flash-player-loader": "^1.1.1",
+    "electron-log": "^2.2.9",
+    "electron-react-titlebar": "^0.7.0",
+    "electron-updater": "^2.16.1",
+    "fast-memoize": "^2.2.8",
     "font-awesome": "^4.7.0",
-    "fs-extra": "^2.1.2",
+    "fs-extra": "^5.0.0",
+    "fuse.js": "^3.2.0",
     "glob": "^7.0.5",
     "header-case-normalizer": "^1.0.3",
-    "i18n-2": "^0.6.3",
-    "immutable": "^3.7.6",
-    "jquery": "^3.1.0",
+    "i18n-2": "^0.7.2",
+    "immutable": "^3.8.2",
     "lodash": "^4.14.1",
-    "mime": "^1.3.4",
+    "mime": "^2.0.3",
     "moment-timezone": "^0.5.11",
     "mousetrap": "^1.5.3",
-    "npm": "^4.4.4",
-    "objtree": "^0.1.1",
-    "pac-proxy-agent": "^1.0.0",
-    "path-extra": "4.1.0",
-    "poi-lib-battle": "2.2.1",
-    "prop-types": "^15.5.8",
-    "react": "^15.5.4",
-    "react-addons-shallow-compare": "^15.4.0",
-    "react-bootstrap": "^0.30.10",
-    "react-dom": "^15.5.4",
-    "react-file-dropzone": "^0.3.0",
+    "node-fetch": "^1.7.3",
+    "npm": "=5.6.0",
+    "pac-proxy-agent": "^2.0.0",
+    "pangu": "^3.3.0",
+    "path-extra": "^4.2.1",
+    "poi-asset-contributor-data": "^1.0.3",
+    "poi-asset-themes": "^3.2.0",
+    "poi-lib-battle": "^2.4.0",
+    "prop-types": "^15.6.0",
+    "react": "^16.1.1",
+    "react-bootstrap": "^0.31.5",
+    "react-dom": "^16.1.1",
+    "react-file-dropzone": "^0.4.1",
     "react-fontawesome": "^1.6.1",
-    "react-portal": "^3.0.0",
-    "react-redux": "^5.0.4",
-    "react-remarkable": "^1.1.1",
-    "react-toastr": "^2.8.0",
+    "react-redux": "^5.0.6",
+    "react-remarkable": "^1.1.3",
+    "react-toastr": "^3.0.0",
+    "react-virtualized": "^9.11.0",
     "reduce-reducers": "^0.1.2",
-    "redux": "^3.6.0",
-    "redux-observers": "^2.0.1",
+    "redux": "^3.7.2",
+    "redux-observers": "^2.0.2",
     "redux-thunk": "^2.1.0",
-    "request": "^2.74.0",
+    "request": "^2.83.0",
     "reselect": "^3.0.0",
-    "semver": "^5.3.0",
-    "socks5-client": "^1.2.0",
-    "socks5-http-client": "^1.0.1"
+    "semver": "^5.4.1",
+    "socks5-client": "^1.2.5",
+    "socks5-http-client": "^1.0.1",
+    "validate-npm-package-name": "^3.0.0",
+    "wanakana": "^2.3.1",
+    "yargs": "^10.0.3"
   },
   "devDependencies": {
-    "asar": "^0.13.0",
-    "babel-eslint": "^7.0.0",
-    "coffeelint": "^1.11.1",
-    "electron": "~1.6.6",
-    "electron-builder": "^16.6.1",
-    "electron-builder-squirrel-windows": "^16.6.0",
-    "eslint": "^3.2.2",
-    "eslint-plugin-import": "^2.0.0",
-    "eslint-plugin-react": "^6.3.0",
+    "asar": "^0.14.0",
+    "babel-eslint": "^8.0.2",
+    "electron": "^1.7.9",
+    "electron-builder": "^19.45.4",
+    "eslint": "^4.9.0",
+    "eslint-plugin-import": "^2.7.0",
+    "eslint-plugin-react": "^7.4.0",
     "git-archive": "^0.1.4",
     "gulp": "^3.9.1",
-    "mocha": "^3.0.1",
+    "mocha": "^4.0.1",
     "mocha-lcov-reporter": "^1.0.0",
     "node-7z": "^0.4.0",
     "node-unzip-2": "^0.2.1",
-    "rimraf": "^2.5.4",
-    "tar-fs": "^1.10.0",
+    "rimraf": "^2.6.2",
+    "tar-fs": "^1.16.0",
     "walk": "^2.3.9"
   },
   "build": {
     "appId": "org.poooi.poi",
-    "asar": {
-      "smartUnpack": false
-    },
+    "asar": false,
     "extraResources": [
       "PepperFlash/${os}-${arch}"
     ],
-    "npmRebuild": false,
+    "npmRebuild": true,
     "mac": {
-      "icon": "assets/icons/poi.icns",
-      "target": [
-        "dmg"
+      "publish": [
+        "github"
       ],
+      "icon": "assets/icons/poi.icns",
       "category": "public.app-category.games"
     },
     "dmg": {
@@ -136,13 +143,37 @@
       ]
     },
     "win": {
+      "publish": [
+        "github"
+      ],
       "icon": "assets/icons/poi.ico",
       "target": [
-        "squirrel",
-        "7z"
+        {
+          "target": "nsis",
+          "arch": [
+            "x64",
+            "ia32"
+          ]
+        },
+        {
+          "target": "7z",
+          "arch": [
+            "x64",
+            "ia32"
+          ]
+        }
       ]
     },
+    "nsis": {
+      "artifactName": "poi-setup-${version}.${ext}",
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true,
+      "multiLanguageInstaller": true
+    },
     "linux": {
+      "publish": [
+        "github"
+      ],
       "target": [
         "7z",
         "deb",
@@ -154,5 +185,11 @@
     "directories": {
       "app": "app_compiled"
     }
+  },
+  "false": {},
+  "collective": {
+    "type": "opencollective",
+    "url": "https://opencollective.com/poi",
+    "logo": "https://opencollective.com/opencollective/logo.txt"
   }
 }

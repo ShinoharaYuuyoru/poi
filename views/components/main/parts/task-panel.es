@@ -13,6 +13,8 @@ import {
   extensionSelectorFactory,
 } from 'views/utils/selectors'
 
+import '../assets/task-panel.css'
+
 // Return [count, required]
 function sumSubgoals(record) {
   if (!record)
@@ -98,13 +100,13 @@ function getStyleByPercent(percent) {
 function getToolTip(record) {
   return (
     <div>
-    {
-      values(record).map((subgoal, idx) =>
-        (subgoal && typeof subgoal === 'object')
-          ? <div key={idx}>{i18n.data.__(subgoal.description)} - {subgoal.count} / {subgoal.required}</div>
-          : undefined
-      )
-    }
+      {
+        values(record).map((subgoal, idx) =>
+          (subgoal && typeof subgoal === 'object')
+            ? <div key={idx}>{i18n.data.__(subgoal.description)} - {subgoal.count} / {subgoal.required}</div>
+            : undefined
+        )
+      }
     </div>
   )
 }
@@ -117,15 +119,15 @@ const TaskRowBase = connect(
     leftOverlayPlacement: (!doubleTabbed) && (layout == 'vertical') ? 'top' : 'left',
   }))
 )(function({
-    idx,                  // Mandatory: 0..5
-    bulletColor='#fff',
-    leftLabel='',
-    leftOverlay,
-    rightLabel='',
-    rightOverlay,
-    rightBsStyle='success',
-    leftOverlayPlacement,
-  }) {
+  idx,                  // Mandatory: 0..5
+  bulletColor='#fff',
+  leftLabel='',
+  leftOverlay,
+  rightLabel='',
+  rightOverlay,
+  rightBsStyle='success',
+  leftOverlayPlacement,
+}) {
   return (
     <div className="panel-item task-item">
       <OverlayTrigger
@@ -158,9 +160,10 @@ const TaskRow = connect(
     quest,
     record: get(state, ['info', 'quests', 'records', quest.api_no]),
     translation: get(extensionSelectorFactory('poi-plugin-quest-info')(state), ['quests', quest.api_no, 'condition']),
+    wikiId: get(extensionSelectorFactory('poi-plugin-quest-info')(state), ['quests', quest.api_no, 'wiki_id']),
   })
-)(function ({idx, quest, record, translation}) {
-  const questName = quest ? quest.api_title : '???'
+)(function ({idx, quest, record, translation, wikiId}) {
+  const questName = quest ? i18n.resources.__(quest.api_title || '') : '???'
   const questContent = translation ? translation : quest ? quest.api_detail.replace(/<br\s*\/?>/gi, '') : '...'
   const [count, required] = sumSubgoals(record)
   const progressBsStyle = record ?
@@ -177,11 +180,11 @@ const TaskRow = connect(
       idx={idx}
       bulletColor={quest ? getCategory(quest.api_category) : '#fff'}
       leftLabel={questName}
-      leftOverlay={<div><strong>{questName}</strong><br />{questContent}</div>}
+      leftOverlay={<div><strong>{wikiId ? `${wikiId} - ` : ''}{questName}</strong><br />{questContent}</div>}
       rightLabel={progressLabel}
       rightBsStyle={progressBsStyle}
       rightOverlay={progressOverlay}
-      />
+    />
   )
 })
 
@@ -194,40 +197,40 @@ const TaskPanel = connect(
 )(function ({activeQuests, activeCapacity, activeNum}) {
   return (
     <Panel bsStyle="default">
-    {[
-      sortBy(map(values(activeQuests), 'detail'), 'api_no').map((quest, idx) =>
-        <TaskRow
-          key={(quest || {}).api_no || idx}
-          idx={idx}
-          quest={quest}
-        />
-      ),
-      range(Object.keys(activeQuests).length, 6).map((idx) =>
-        (idx < activeNum) ?
+      {[
+        sortBy(map(values(activeQuests), 'detail'), 'api_no').map((quest, idx) =>
+          <TaskRow
+            key={(quest || {}).api_no || idx}
+            idx={idx}
+            quest={quest}
+          />
+        ),
+        range(Object.keys(activeQuests).length, 6).map((idx) =>
+          (idx < activeNum) ?
           // Need refreshing
-          <TaskRowBase
-            key={idx}
-            idx={idx}
-            leftLabel={__('To be refreshed')}
-            leftOverlay={__('Browse your quest list to let poi know your active quests')}
-          />
-        : (idx < activeCapacity) ?
-          // Empty
-          <TaskRowBase
-            key={idx}
-            idx={idx}
-            leftLabel={__('Empty quest')}
-          />
-        :
-          // Can expand
-          <TaskRowBase
-            key={idx}
-            idx={idx}
-            leftLabel={__('Locked')}
-            leftOverlay={__('Increase your active quest limit with a "Headquarters Personnel".')}
-          />
-      ),
-    ]}
+    <TaskRowBase
+      key={idx}
+      idx={idx}
+      leftLabel={__('To be refreshed')}
+      leftOverlay={__('Browse your quest list to let poi know your active quests')}
+    />
+            : (idx < activeCapacity) ?
+              // Empty
+    <TaskRowBase
+      key={idx}
+      idx={idx}
+      leftLabel={__('Empty quest')}
+    />
+              :
+              // Can expand
+              <TaskRowBase
+                key={idx}
+                idx={idx}
+                leftLabel={__('Locked')}
+                leftOverlay={__('Increase your active quest limit with a "Headquarters Personnel".')}
+              />
+        ),
+      ]}
     </Panel>
   )
 })

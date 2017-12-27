@@ -1,4 +1,3 @@
-import { join } from 'path-extra'
 import { connect } from 'react-redux'
 import classNames from 'classnames'
 import React from 'react'
@@ -7,12 +6,15 @@ import { Panel, Button, ButtonGroup } from 'react-bootstrap'
 import { get, memoize } from 'lodash'
 import { createSelector } from 'reselect'
 
-const { dbg, i18n, dispatch } = window
+const { i18n, dispatch } = window
 const __ = i18n.main.__.bind(i18n.main)
 const { Component } = React
 
-import { PaneBodyMini } from './minishippane'
+import { PaneBodyMini, LBViewMini } from './minishippane'
+import { LandbaseButton } from '../../ship-parts/landbase-button'
 import { fleetStateSelectorFactory } from 'views/utils/selectors'
+
+import '../assets/miniship.css'
 
 function getStyle(state, disabled) {
   if (state >= 0 && state <= 5 && !disabled)
@@ -70,14 +72,6 @@ export default connect((state, props) => ({
     this.nowTime = 0
   }
 
-  componentWillUpdate(nextProps, nextState) {
-    this.nowTime = (new Date()).getTime()
-  }
-  componentDidUpdate(prevProps, prevState) {
-    const cur = Date.now()
-    dbg.extra('moduleRenderCost').log(`the cost of mini-ship-module render: ${cur-this.nowTime}ms`)
-  }
-
   handleClick = (idx) => {
     if (idx != this.props.activeFleetId) {
       dispatch({
@@ -102,35 +96,46 @@ export default connect((state, props) => ({
     return (
       <div style={{height: '100%'}} onDoubleClick={this.changeShipView}>
         <Panel id="ShipViewMini" bsStyle="default" style={{minHeight: 322, height: 'calc(100% - 6px)'}}>
-          <link rel="stylesheet" href={join(__dirname, '..', 'assets', 'miniship.css')} />
           <div className="panel-row">
             <ButtonGroup bsSize="xsmall">
-            {
-              [0, 1, 2, 3].map((i) =>
-                <ShipViewSwitchButton
-                  key={i}
-                  fleetId={i}
-                  disabled={i + 1 > this.props.fleetCount}
-                  onClick={this.handleClick.bind(this, i)}
-                  activeFleetId={this.props.activeFleetId}
+              {
+                [0, 1, 2, 3].map((i) =>
+                  <ShipViewSwitchButton
+                    key={i}
+                    fleetId={i}
+                    disabled={i + 1 > this.props.fleetCount}
+                    onClick={this.handleClick.bind(this, i)}
+                    activeFleetId={this.props.activeFleetId}
                   />
-              )
-            }
+                )
+              }
+            </ButtonGroup>
+            <ButtonGroup bsSize="xsmall" className='plane-button-mini'>
+              <LandbaseButton key={4}
+                fleetId={4}
+                disabled={this.props.airBaseCnt === 0}
+                onClick={e => this.handleClick(4)}
+                activeFleetId={this.props.activeFleetId}
+                isMini={true}
+              />
             </ButtonGroup>
           </div>
           <div className="no-scroll">
             <div className={classNames("ship-tab-content", {'ship-tab-content-transition': this.props.enableTransition})}
-                 style={{transform: `translateX(-${this.props.activeFleetId}00%)`}}>
-            {
-              [0, 1, 2, 3].map((i) => (
-                <div className="ship-deck ship-tabpane" key={i}>
-                  <PaneBodyMini
-                    key={i}
-                    fleetId={i}
-                  />
-                </div>
-              ))
-            }
+              style={{transform: `translateX(-${this.props.activeFleetId}00%)`}}>
+              {
+                [0, 1, 2, 3].map((i) => (
+                  <div className="ship-deck ship-tabpane" key={i}>
+                    <PaneBodyMini
+                      key={i}
+                      fleetId={i}
+                    />
+                  </div>
+                ))
+              }
+              <div className="ship-deck ship-tabpane" key={4}>
+                <LBViewMini />
+              </div>
             </div>
           </div>
         </Panel>

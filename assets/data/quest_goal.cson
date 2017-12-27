@@ -1,4 +1,9 @@
 ###
+type: 1-daily, 2-weekly, 3-monthly, 4-quarterly, 8-special daily, 9-special daily
+for more details see views/redux/quests.es
+###
+
+###
 # Daily
 ###
 201: # 敵艦隊を撃破せよ！ 获得胜利1次
@@ -112,12 +117,27 @@
     description: "改修"
     required: 1
     init: 0
+673: # 装備開発力の整備 (「小口径主砲」系装備x4を廃棄)
+  type: 1
+  "destory_item":
+    description: "廃棄"
+    slotitemType2: [1] # 1=小口径主砲
+    required: 4
+    init: 0
+674: # 工廠環境の整備 (「機銃」系装備x3を廃棄)
+  type: 1
+  "destory_item":
+    description: "廃棄"
+    slotitemType2: [21] # 21=対空機銃
+    required: 3
+    init: 0
 702: # 艦の「近代化改修」を実施せよ！ 近代化改修2次
   type: 1
   "remodel_ship":
     description: "近代化改修"
     required: 2
     init: 0
+
 ###
 # Someday
 ###
@@ -262,7 +282,7 @@
   type: 2
   "destory_item":
     description: "廃棄"
-    slotitemId: [15]
+    slotitemType2: [21] # 21=対空機銃
     required: 6
     init: 0
 ###
@@ -289,13 +309,95 @@
     description: "演習勝利"
     required: 7
     init: 0
+424:
+  type: 3
+  "mission_success":
+    description: "遠征"
+    required: 4
+    mission: ['海上護衛任務']
+    init: 0
 ###
 # Quarterly
 ###
+426: #海上通商航路の警戒を厳とせよ
+  type: 4
+  fuzzy: true
+  "mission_success@警備任務":
+    description: "3"
+    required: 1
+    mission: ['警備任務']
+    init: 0
+  "mission_success@対潜警戒任務":
+    description: "4"
+    required: 1
+    mission: ['対潜警戒任務']
+    init: 0
+  "mission_success@海上護衛任務":
+    description: "5"
+    required: 1
+    mission: ['海上護衛任務']
+    init: 0
+  "mission_success@強行偵察任務":
+    description: "10"
+    required: 1
+    mission: ['強行偵察任務']
+    init: 0
+
+428: #近海に侵入する敵潜を制圧せよ！
+  type: 4
+  fuzzy: true
+  "mission_success@対潜警戒任務":
+    description: "4"
+    required: 2
+    mission: ['対潜警戒任務']
+    init: 0
+  "mission_success@海峡警備行動":
+    description: "A2"
+    required: 2
+    mission: ['海峡警備行動']
+    init: 0
+  "mission_success@長時間対潜警戒":
+    description: "A3"
+    required: 2
+    mission: ['長時間対潜警戒']
+    init: 0
+
+663: #新型艤装の継続研究 (大口径主砲を10個廃棄)
+  type: 4
+  "destory_item":
+    description: "廃棄"
+    slotitemType2: [3] # 3=大口径主砲
+    required: 10
+    init: 0
+
 822: #沖ノ島海域迎撃戦
-  type: 3
+  type: 4
   "battle_boss_win_rank_s":
     description: "勝利"
     maparea: [24]
     required: 2
+    init: 0
+
+854: #戦果拡張任務！「Z作戦」前段作戦
+  type: 4
+  fuzzy: true
+  "battle_boss_win_rank_a@24":
+    description: "2-4"
+    maparea: [24]
+    required: 1
+    init: 0
+  "battle_boss_win_rank_a@61":
+    description: "6-1"
+    maparea: [61]
+    required: 1
+    init: 0
+  "battle_boss_win_rank_a@63":
+    description: "6-3"
+    maparea: [63]
+    required: 1
+    init: 0
+  "battle_boss_win_rank_s@64":
+    description: "6-4"
+    maparea: [64]
+    required: 1
     init: 0

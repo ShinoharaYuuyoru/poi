@@ -8,8 +8,15 @@ import { connect } from 'react-redux'
 const __ = i18n.main.__.bind(i18n.main)
 
 import { CountdownNotifierLabel } from './countdown-timer'
-import { fleetsSelector, configSelector } from 'views/utils/selectors'
+import {
+  fleetsSelector,
+  configSelector,
+  fleetShipsDataSelectorFactory,
+  fleetInBattleSelectorFactory,
+} from 'views/utils/selectors'
 import { timeToString } from 'views/utils/tools'
+
+import '../assets/expedition-panel.css'
 
 const fleetsExpeditionSelector = createSelector(fleetsSelector,
   (fleets) => map(fleets, 'api_mission')
@@ -17,6 +24,38 @@ const fleetsExpeditionSelector = createSelector(fleetsSelector,
 const fleetsNamesSelector = createSelector(fleetsSelector,
   (fleets) => map(fleets, 'api_name')
 )
+const fleetInBattleSelector = createSelector(fleetInBattleSelectorFactory,
+  (inBattle) => inBattle
+)
+
+const FleetStatus = connect((state, {fleetId}) => {
+  const fleetShipsData = fleetShipsDataSelectorFactory(fleetId)(state)
+  const fleetInBattle = fleetInBattleSelector(fleetId)(state)
+  return {
+    fleetId,
+    fleetShipsData,
+    fleetInBattle,
+  }
+})(({ fleetInBattle, fleetShipsData }) => {
+  if (fleetInBattle) {
+    return (
+      <span className="expedition-name text-success">{__('In Sortie')}</span>
+    )
+  }
+
+  const notSuppliedShips = fleetShipsData.filter(([ship, $ship] = []) =>
+    Math.min(ship.api_fuel / $ship.api_fuel_max, ship.api_bull / $ship.api_bull_max) < 1
+  )
+  if (notSuppliedShips.length) {
+    return (
+      <span className="expedition-name text-warning">{__('Resupply needed')}</span>
+    )
+  }
+
+  return (
+    <span className="expedition-name">{__('Ready')}</span>
+  )
+})
 
 export default connect(
   (state) => {
@@ -39,9 +78,9 @@ export default connect(
   getLabelStyle = (props, timeRemaining) => {
     return (
       timeRemaining > 600 ? 'primary' :
-      timeRemaining > 60 ? 'warning' :
-      timeRemaining >= 0 ? 'success' :
-      'default'
+        timeRemaining > 60 ? 'warning' :
+          timeRemaining >= 0 ? 'success' :
+            'default'
     )
   }
   static basicNotifyConfig = {
@@ -54,41 +93,46 @@ export default connect(
     const {fleetsExpedition, fleetNames, $expeditions, canNotify, notifyBefore} = this.props
     return (
       <Panel bsStyle="default">
-      {
-        range(1, 4).map((i) => {
-          const [status, expeditionId, rawCompleteTime] = fleetsExpedition[i] || [-1, 0, -1]
-          const fleetName = get(fleetNames, i, '???')
-          const expeditionName =
-            status == -1 ? __('Locked') :
-            status == 0 ? __('Ready') :
-            get($expeditions, [expeditionId, 'api_name'], __('???'))
-          const completeTime = status > 0 ? rawCompleteTime : -1
-          return (
-            <div className="panel-item expedition-item" key={i} >
-              <span className="expedition-name">{expeditionName}</span>
-              <OverlayTrigger placement='left' overlay={
-                <Tooltip id={`expedition-return-by-${i}`} style={completeTime < 0 && {display: 'none'}}>
-                  <strong>{__("Return by : ")}</strong>{timeToString(completeTime)}
-                </Tooltip>
-              }>
-                <div>
-                  <CountdownNotifierLabel
-                    timerKey={`expedition-${i+1}`}
-                    completeTime={completeTime}
-                    getLabelStyle={this.getLabelStyle}
-                    getNotifyOptions={() => canNotify && (completeTime >= 0) && {
-                      ...this.constructor.basicNotifyConfig,
-                      args: fleetName,
-                      completeTime: completeTime,
-                      preemptTime: notifyBefore,
-                    }}
-                  />
-                </div>
-              </OverlayTrigger>
-            </div>
-          )
-        })
-      }
+        {
+          range(1, 4).map((i) => {
+            const [status, expeditionId, rawCompleteTime] = fleetsExpedition[i] || [-1, 0, -1]
+            const fleetName = get(fleetNames, i, '???')
+            const expedition = get($expeditions, expeditionId, {})
+            const expeditionName = status == -1
+              ? __('Locked')
+              : `${expedition.api_disp_no ||__('???')} ${expedition.api_name || __('???')}`
+            const completeTime = status > 0 ? rawCompleteTime : -1
+
+            return (
+              <div className="panel-item expedition-item" key={i} >
+                {status === 0 ? (
+                  <FleetStatus fleetId={i} />
+                ) : (
+                  <span className="expedition-name">{expeditionName}</span>
+                )}
+                <OverlayTrigger placement='left' overlay={
+                  <Tooltip id={`expedition-return-by-${i}`} style={completeTime < 0 && {display: 'none'}}>
+                    <strong>{__("Return by : ")}</strong>{timeToString(completeTime)}
+                  </Tooltip>
+                }>
+                  <div>
+                    <CountdownNotifierLabel
+                      timerKey={`expedition-${i+1}`}
+                      completeTime={completeTime}
+                      getLabelStyle={this.getLabelStyle}
+                      getNotifyOptions={() => canNotify && (completeTime >= 0) && {
+                        ...this.constructor.basicNotifyConfig,
+                        args: fleetName,
+                        completeTime: completeTime,
+                        preemptTime: notifyBefore,
+                      }}
+                    />
+                  </div>
+                </OverlayTrigger>
+              </div>
+            )
+          })
+        }
       </Panel>
     )
   }

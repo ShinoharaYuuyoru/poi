@@ -1,4 +1,5 @@
-import React from 'react'
+import React, { Component } from 'react'
+import { Checkbox } from 'react-bootstrap'
 
 const {config, i18n, POI_VERSION} = window
 const __ = window.i18n.others.__.bind(i18n.others)
@@ -7,6 +8,25 @@ const __ = window.i18n.others.__.bind(i18n.others)
 const dontShowAgain = () =>
   config.set('poi.first', POI_VERSION)
 
+class GoogleAnalyticsOption extends Component {
+  state = {
+    checked: config.get('poi.sendAnalytics', true),
+  }
+  handleChange = e => {
+    config.set('poi.sendAnalytics', !this.state.checked)
+    this.setState({ checked: !this.state.checked })
+  }
+  render() {
+    return (
+      <Checkbox
+        checked={this.state.checked}
+        onChange={this.handleChange}>
+        {window.i18n.setting.__('Send data to Google Analytics')}
+      </Checkbox>
+    )
+  }
+}
+
 if (config.get('poi.first', '0.0.0') != POI_VERSION) {
   const isHan = ['zh-CN', 'zh-TW'].includes(window.language)
   const isEn = window.language === 'en-US'
@@ -14,6 +34,9 @@ if (config.get('poi.first', '0.0.0') != POI_VERSION) {
   const title = 'README'
   const content =
     <div>
+      <div>
+        <GoogleAnalyticsOption />
+      </div>
       <p>{__('Good day and welcome to poi %s! Before your use, here are some information for you', POI_VERSION)}</p>
       <p style={{color: '#FFCCFF', fontWeight: 'bold', fontSize: 'large'}}>
         {__('poi will never modify your game data package, but please use trusted executables and plugins!')}
@@ -23,8 +46,8 @@ if (config.get('poi.first', '0.0.0') != POI_VERSION) {
         <ul>
           {
             isCN
-            ? <li>{__('For Shimakaze Go, use HTTP proxy with address 127.0.0.1 and port 8099 (default case).')}</li>
-            : <li>{__('For cookie method, check Editing DMM Cookie Region Flag setting.')}</li>
+              ? <li>{__('For Shimakaze Go, use HTTP proxy with address 127.0.0.1 and port 8099 (default case).')}</li>
+              : <li>{__('For cookie method, check Editing DMM Cookie Region Flag setting.')}</li>
           }
           <li>{__('For Shadowsocks and other Socks5 proxies, use Socks5.')}</li>
           <li>{__('For VPN, simply leave it unset.')}</li>

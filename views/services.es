@@ -1,4 +1,4 @@
-import { remote } from 'electron'
+import { remote, shell } from 'electron'
 import { isInGame } from 'views/utils/game-utils'
 
 const {$, config, toggleModal, log, error, i18n, dbg} = window
@@ -6,6 +6,7 @@ const __ = i18n.others.__.bind(i18n.others)
 const __n = i18n.others.__n.bind(i18n.others)
 
 const WindowManager = remote.require('./lib/window')
+const { stopNavigateAndNewWindow } = remote.require('./lib/utils')
 
 import './services/update'
 import './services/layout'
@@ -15,6 +16,7 @@ import './services/modernization-delta'
 import './services/development-prophecy'
 import './services/sortie-dangerous-check'
 import './services/sortie-free-slot-check'
+import './services/event-sortie-check'
 
 const refreshFlash = () =>
   $('kan-game webview').executeJavaScript(`
@@ -88,10 +90,13 @@ window.onbeforeunload = (e) => {
   }
 }
 class GameResponse {
-  constructor(path, body, postBody) {
+  constructor(path, body, postBody, time) {
     this.path = path
     this.body = body
     this.postBody = postBody
+    Object.defineProperty(this, 'time', {
+      get: () => String(new Date(time)),
+    })
     Object.defineProperty(this, 'ClickToCopy -->', {get: () => {
       require('electron').clipboard.writeText(JSON.stringify({path, body, postBody}))
       return `Copied: ${this.path}`
@@ -104,10 +109,10 @@ window.addEventListener('game.request', (e) => {
   //const resPath = e.detail.path
 })
 window.addEventListener('game.response', (e) => {
-  const {method, body, postBody} = e.detail
+  const {method, body, postBody, time} = e.detail
   const resPath = e.detail.path
   if (dbg.extra('gameResponse').isEnabled()) {
-    dbg._getLogFunc()(new GameResponse(resPath, body, postBody))
+    dbg._getLogFunc()(new GameResponse(resPath, body, postBody, time))
   }
   if (config.get('poi.showNetworkLog', true)) {
     log(`${__('Hit')} ${method} ${resPath}`, {dontReserve: true})
@@ -124,6 +129,17 @@ window.addEventListener('network.invalid.result', (e) => {
   const {code} = e.detail
   error(__('The server presented you a cat. (Error code: %s)',  code), {dontReserve: true})
 })
+
+const handleExternalURL = (e, url) => {
+  e.preventDefault()
+  if (!url.startsWith('file'))
+    shell.openExternal(url)
+}
+
+remote.getCurrentWebContents().on('devtools-opened', e => window.dispatchEvent(new Event('resize')))
+remote.getCurrentWebContents().on('new-window', handleExternalURL)
+remote.getCurrentWebContents().on('will-navigate', handleExternalURL)
+stopNavigateAndNewWindow(remote.getCurrentWebContents().id)
 
 remote.getCurrentWebContents().on('dom-ready', () => {
   if (process.platform === 'darwin') {
@@ -158,6 +174,8 @@ remote.getCurrentWebContents().on('dom-ready', () => {
         document.cookie = "ckcy=1;expires=Sun, 09 Feb 2019 09:00:09 GMT;domain=.dmm.com;path=/netgame/";
         document.cookie = "ckcy=1;expires=Sun, 09 Feb 2019 09:00:09 GMT;domain=.dmm.com;path=/netgame_s/";
       `)
+      const ua = $('kan-game webview').getWebContents().session.getUserAgent()
+      $('kan-game webview').getWebContents().session.setUserAgent(ua, 'ja-JP')
     }
     if (config.get('poi.disableNetworkAlert', false)) {
       $('kan-game webview').executeJavaScript('DMM.netgame.reloadDialog=function(){}')

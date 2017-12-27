@@ -1,23 +1,35 @@
 import { omit, get, set } from 'lodash'
 import { remote } from 'electron'
 import { join, basename } from 'path-extra'
-import { createReadStream, readJson, accessSync, readJsonSync, realpathSync, lstat, unlink, rmdir, lstatSync } from 'fs-extra'
+import { createReadStream, readJson, accessSync, realpathSync, lstat, unlink, remove, lstatSync } from 'fs-extra'
 import React from 'react'
 import FontAwesome from 'react-fontawesome'
 import semver from 'semver'
 import module from 'module'
-import npm from 'npm'
-import Promise, { promisify } from 'bluebird'
+import { promisify } from 'bluebird'
 import glob from 'glob'
 import crypto from 'crypto'
+import { setAllowedPath } from 'lib/module-path'
+import child_process from 'child_process'
+import path from 'path'
+import i18n from 'i18n-2'
 
 import { extendReducer } from 'views/create-store'
-const { ROOT, config, language, toast, MODULE_PATH } = window
+const { ROOT, config, language, toast, MODULE_PATH, APPDATA_PATH } = window
 const windowManager = remote.require('./lib/window')
 const utils = remote.require('./lib/utils')
 const __ = window.i18n.setting.__.bind(window.i18n.setting)
 
+const allowedPath = [ ROOT, APPDATA_PATH ]
+const pathAdded = new Map()
+const NPM_EXEC_PATH = path.join(ROOT, 'node_modules', 'npm', 'bin', 'npm-cli.js')
+
 require('module').globalPaths.push(MODULE_PATH)
+
+// overwrites i18n-2's translation file cache, to be removed if we change to other lib
+i18n.localeCache = new Proxy({}, {
+  get: () => null,
+})
 
 // This reducer clears the substore no matter what is given.
 const clearReducer = undefined
@@ -70,23 +82,35 @@ export const findInstalledTarball = async (pluginRoot, tarballPath) => {
   return shasumMatchDatas[0].name
 }
 
-export function installPackage(packageName, version) {
+const runScriptAsync = (scriptPath, args, options) =>
+  new Promise ((resolve) => {
+    const proc = child_process.fork(scriptPath, args, options)
+    proc.on('exit', () => resolve())
+  })
+
+export async function installPackage (packageName, version, npmConfig) {
+  if (!packageName) {
+    return
+  }
   if (version) {
     packageName = `${packageName}@${version}`
   }
-  // let flow = co.wrap(function* (_this) {
-  //   yield npminstall({
-  //     root: _this.npmConfig.prefix,
-  //     pkgs: [
-  //       { name: plugin.packageName, version: plugin.latestVersion},
-  //     ],
-  //     registry: _this.npmConfig.registry,
-  //     debug: true
-  //   })
-  //   return yield Promise.resolve()
-  // })
-  // await flow(this)
-  return promisify(npm.commands.install)([packageName])
+  let args = ['install', '--registry', npmConfig.registry]
+  if (npmConfig.http_proxy) {
+    args = [...args, '--proxy', npmConfig.http_proxy]
+  }
+  args = [...args, '--no-progress', '--global-style', '--no-package-lock', packageName]
+  await runScriptAsync(NPM_EXEC_PATH, args, {
+    cwd: npmConfig.prefix,
+  })
+}
+
+export async function removePackage (target, npmConfig) {
+  const args = ['uninstall', '--no-progress', '--no-save', target]
+  await runScriptAsync(NPM_EXEC_PATH, args, {
+    cwd: npmConfig.prefix,
+  })
+  await repairDep([], npmConfig)
 }
 
 
@@ -109,7 +133,7 @@ export function updateI18n(plugin) {
   }
   if (i18nFile != null) {
     const namespace = plugin.id
-    window.i18n[namespace] = new (require('i18n-2'))({
+    window.i18n[namespace] = new i18n({
       locales: ['ko-KR', 'en-US', 'ja-JP', 'zh-CN', 'zh-TW'],
       defaultLocale: 'en-US',
       directory: i18nFile,
@@ -125,16 +149,16 @@ export function updateI18n(plugin) {
   return plugin
 }
 
-export function readPlugin(pluginPath) {
+export async function readPlugin(pluginPath) {
   let pluginData, packageData, plugin
   try {
-    pluginData = readJsonSync(join(ROOT, 'assets', 'data', 'plugin.json'))
+    pluginData = await readJson(join(ROOT, 'assets', 'data', 'plugin.json'))
   } catch (error) {
     pluginData = {}
     utils.error(error)
   }
   try {
-    packageData = readJsonSync(join(pluginPath, 'package.json'))
+    packageData = await readJson(join(pluginPath, 'package.json'))
   } catch (error) {
     packageData = {}
     utils.error(error)
@@ -207,14 +231,19 @@ export function readPlugin(pluginPath) {
   return plugin
 }
 
-export function enablePlugin(plugin, reread=true) {
+export async function enablePlugin(plugin, reread=true) {
+  if (!pathAdded.get(plugin.packageName) && !plugin.windowURL) {
+    allowedPath.push(plugin.pluginPath)
+    setAllowedPath(allowedPath)
+    pathAdded.set(plugin.packageName, true)
+  }
   if (plugin.needRollback)
     return plugin
   let pluginMain
   try {
     pluginMain = {
-      ...require(plugin.pluginPath),
-      ...reread ? readPlugin(plugin.pluginPath) : {},
+      ...await import(plugin.pluginPath),
+      ...reread ? await readPlugin(plugin.pluginPath) : {},
     }
     pluginMain.enabled = true
     pluginMain.isRead = true
@@ -232,11 +261,14 @@ export function enablePlugin(plugin, reread=true) {
     ...plugin,
     ...pluginMain,
   }
+  if (plugin.windowURL) {
+    plugin.realClose = !config.get(`poi.backgroundProcess.${plugin.id}`, !plugin.realClose)
+  }
   plugin = postEnableProcess(plugin)
   return plugin
 }
 
-export function disablePlugin(plugin) {
+export async function disablePlugin(plugin) {
   plugin.enabled = false
   try {
     plugin = unloadPlugin(plugin)
@@ -272,17 +304,25 @@ const postEnableProcess = (plugin) => {
           webSecurity: false,
           plugins: true,
           experimentalFeatures: true,
-          backgroundThrottling: false,
-          offscreen: true,
         },
       }
     }
     Object.assign(windowOptions, {
       realClose: plugin.realClose,
+      backgroundColor: process.platform === 'darwin' ? '#00000000' : '#E62A2A2A',
+      // frame: !config.get('poi.useCustomTitleBar', process.platform === 'win32' || process.platform === 'linux'),
     })
+    if (['darwin'].includes(process.platform) && config.get('poi.vibrant', 0) === 1) {
+      Object.assign(windowOptions, {
+        vibrancy: 'ultra-dark',
+      })
+    }
     if (plugin.multiWindow) {
       plugin.handleClick = function() {
         const pluginWindow = windowManager.createWindow(windowOptions)
+        pluginWindow.setMenu(require('views/components/etc/menu').appMenu)
+        pluginWindow.setAutoHideMenuBar(true)
+        pluginWindow.setMenuBarVisibility(false)
         pluginWindow.loadURL(plugin.windowURL)
         pluginWindow.show()
       }
@@ -291,6 +331,9 @@ const postEnableProcess = (plugin) => {
       plugin.handleClick = function() {
         if (plugin.pluginWindow == null) {
           plugin.pluginWindow = windowManager.createWindow(windowOptions)
+          plugin.pluginWindow.setMenu(require('views/components/etc/menu').appMenu)
+          plugin.pluginWindow.setAutoHideMenuBar(true)
+          plugin.pluginWindow.setMenuBarVisibility(false)
           plugin.pluginWindow.on('close', function() {
             plugin.pluginWindow = null
           })
@@ -302,6 +345,9 @@ const postEnableProcess = (plugin) => {
       }
     } else {
       plugin.pluginWindow = windowManager.createWindow(windowOptions)
+      plugin.pluginWindow.setMenu(require('views/components/etc/menu').appMenu)
+      plugin.pluginWindow.setAutoHideMenuBar(true)
+      plugin.pluginWindow.setMenuBarVisibility(false)
       plugin.pluginWindow.loadURL(plugin.windowURL)
       plugin.handleClick = function() {
         return plugin.pluginWindow.show()
@@ -350,12 +396,14 @@ export function unloadPlugin(plugin) {
   return plugin
 }
 
-export function notifyFailed(state) {
+export function notifyFailed(state, npmConfig) {
   const plugins = state.filter((plugin) => (plugin.isBroken))
   const unreadList = []
+  const reinstallList = []
   for (let i = 0; i < plugins.length; i++) {
     const plugin = plugins[i]
     unreadList.push(plugin.name)
+    reinstallList.push(plugin.packageName)
   }
   if (unreadList.length > 0) {
     const content = `${unreadList.join(' / ')} ${__('failed to load. Maybe there are some compatibility problems.')}`
@@ -364,6 +412,23 @@ export function notifyFailed(state) {
       title: __('Plugin error'),
     })
   }
+  repairDep(reinstallList, npmConfig)
+}
+
+export async function repairDep(brokenList, npmConfig) {
+  const depList = (await new Promise(res => {
+    glob(path.join(npmConfig.prefix, 'node_modules', '*'), (err, matches) => res(matches))
+  })).filter(p => !p.includes('poi-plugin'))
+  depList.forEach(p => {
+    try {
+      require(p)
+    } catch (e) {
+      safePhysicallyRemove(p, npmConfig)
+    }
+  })
+  brokenList.forEach(pluginName => {
+    installPackage(pluginName, null, npmConfig)
+  })
 }
 
 // Unlink a path if it's a symlink.
@@ -389,6 +454,6 @@ export const safePhysicallyRemove = async (packagePath) => {
       return
     }
   } catch (e) {
-    return await promisify(rmdir)(packagePath)
+    return await remove(packagePath)
   }
 }

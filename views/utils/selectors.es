@@ -1,5 +1,5 @@
 import memoize from 'fast-memoize'
-import { get, map, zip } from 'lodash'
+import { get, map, zip, flatMap } from 'lodash'
 import { createSelector, createSelectorCreator, defaultMemoize } from 'reselect'
 
 //### Helpers ###
@@ -95,6 +95,7 @@ export const sortieStatusSelector = (state) => state.sortie.sortieStatus
 export const currentNodeSelector = (state) => state.sortie.currentNode
 export const battleSelector = (state) => state.battle
 export const fcdSelector = (state) => state.fcd
+export const ipcSelector = state => state.ipc
 
 export const extensionSelectorFactory = (key) =>
   (state) => get(state.ext, [key, '_']) || {}
@@ -120,6 +121,7 @@ export const inRepairShipsIdSelector = arrayResultWrapper(createSelector(repairs
 export const fleetSelectorFactory = memoize((fleetId) =>
   (state) => (state.info.fleets || [])[fleetId]
 )
+export const landbaseSelectorFactory = memoize(landbaseId => state => (state.info.airbase || [])[landbaseId])
 
 // Returns [shipId] of this fleet
 // Returns undefined if fleet not found
@@ -130,6 +132,12 @@ export const fleetShipsIdSelectorFactory = memoize((fleetId) =>
     return fleet.api_ship.filter((n) => n != -1)
   }))
 )
+
+export const fleetSlotCountSelectorFactory = memoize((fleetId) => createSelector(
+  [
+    fleetSelectorFactory(fleetId),
+  ], fleet => get(fleet, 'api_ship.length', 0)
+))
 
 export const fleetInBattleSelectorFactory = memoize((fleetId) =>
   createSelector(sortieStatusSelector, (sortieStatus) => sortieStatus[fleetId])
@@ -173,12 +181,22 @@ export const shipRepairDockSelectorFactory = memoize((shipId) =>
   })
 )
 
+// Selector for all ship ids that in sortie, including the -1 placeholders
+const sortieShipIdSelector = arrayResultWrapper(createSelector(
+  [
+    fleetsSelector, // we need the -1 placeholder here because escapedPos is by index
+    sortieSelector,
+  ], (fleet, { sortieStatus }) => flatMap(sortieStatus, (sortie, index) =>
+    sortie ? get(fleet, [index, 'api_ship'], []) : []
+  )
+))
+
 export const escapeStatusSelectorFactory = memoize((shipId) =>
   createSelector([
-    fleetsSelector,
+    sortieShipIdSelector,
     sortieSelector,
-  ], (fleet, {escapedPos}) =>
-    escapedPos.map(pos => get(fleet, `${Math.floor(pos / 6)}.api_ship.${pos % 6}`)).indexOf(shipId) !== -1
+  ], (sortieShipIds, {escapedPos}) =>
+    shipId > 0 && escapedPos.some(pos => sortieShipIds[pos] === shipId)
   )
 )
 
@@ -188,14 +206,15 @@ const shipBaseDataSelectorFactory = memoize((shipId) =>
     shipsSelector,
   ], (ships) =>
     ships && typeof shipId === 'number' && shipId
-    ? ships[shipId]
-    : undefined
+      ? ships[shipId]
+      : undefined
   )
 )
+
 // Reads props.shipId
 // Returns [_ship, $ship]
 // Returns undefined if uninitialized, or if ship not found in _ship
-// Attention: shipId here only accepts Number type, 
+// Attention: shipId here only accepts Number type,
 //   otherwise will always return undefined
 export const shipDataSelectorFactory = memoize((shipId) =>
   createSelector([
@@ -203,8 +222,8 @@ export const shipDataSelectorFactory = memoize((shipId) =>
     constSelector,
   ], (ship, {$ships}) =>
     $ships && typeof ship === 'object' && ship
-    ? [ship, $ships[ship.api_ship_id]]
-    : undefined
+      ? [ship, $ships[ship.api_ship_id]]
+      : undefined
   )
 )
 
@@ -217,6 +236,10 @@ const shipExslotSelectorFactory = memoize((shipId) =>
   createSelector(shipBaseDataSelectorFactory(shipId), (ship) => ship ? ship.api_slot_ex : -1))
 const shipOnSlotSelectorFactory = memoize((shipId) =>
   createSelector(shipBaseDataSelectorFactory(shipId), (ship) => ship ? ship.api_onslot : undefined))
+const landbaseSlotnumSelectorFactory = memoize(landbaseId =>
+  createSelector(landbaseSelectorFactory(landbaseId), landbase => landbase ? landbase.api_plane_info.length : 0))
+const landbaseOnSlotSelectorFactory = memoize((landbaseId) =>
+  createSelector(landbaseSelectorFactory(landbaseId), landbase => landbase ? landbase.api_plane_info.map(l => l.api_count) : undefined))
 // Returns [equipId for each slot on the ship]
 // length is always 5
 // Slot is padded with -1 for each empty slot
@@ -229,6 +252,8 @@ const shipEquipsIdSelectorFactory = memoize((shipId) =>
     slot ? slot.slice(0, 4).concat(exslot).map((i) => parseInt(i)) : undefined
   ))
 )
+const landbaseEquipsIdSelectorFactory = memoize(landbaseId =>
+  createSelector(landbaseSelectorFactory(landbaseId), landbase => landbase ? landbase.api_plane_info.map(l => l.api_slotid) : []))
 
 // There's a Number type check
 const equipBaseDataSelectorFactory = memoize((equipId) =>
@@ -236,14 +261,14 @@ const equipBaseDataSelectorFactory = memoize((equipId) =>
     equipsSelector,
   ], (equips) =>
     equips && typeof equipId === 'number' && equipId
-    ? equips[equipId]
-    : undefined
+      ? equips[equipId]
+      : undefined
   )
 )
 
 // Returns [_equip, $equip]
 // Returns undefined if uninitialized, or if equip not found in _equip
-// Attention: equipId here only accepts Number type, 
+// Attention: equipId here only accepts Number type,
 //   otherwise will always return undefined
 export const equipDataSelectorFactory = memoize((equipId) =>
   createSelector([
@@ -286,12 +311,31 @@ export const shipEquipDataSelectorFactory = memoize((shipId) =>
     shipOnSlotSelectorFactory(shipId),
   ], (state, slotnum, shipEquipsId, onslots) =>
     !Array.isArray(shipEquipsId)
-    ? undefined
-    : effectiveEquips(
+      ? undefined
+      : effectiveEquips(
         zip(shipEquipsId, onslots).map(([equipId, onslot]) =>
           equipId <= 0
-          ? undefined
-          : modifiedEquipDataSelectorFactory(equipId)({ state, onslot })
+            ? undefined
+            : modifiedEquipDataSelectorFactory(equipId)({ state, onslot })
+        ), slotnum
+      )
+  ))
+)
+
+export const landbaseEquipDataSelectorFactory = memoize(landbaseId =>
+  arrayResultWrapper(createSelector([
+    stateSelector,
+    landbaseSlotnumSelectorFactory(landbaseId),
+    landbaseEquipsIdSelectorFactory(landbaseId),
+    landbaseOnSlotSelectorFactory(landbaseId),
+  ], (state, slotnum, landbaseEquipsId, onslots) =>
+    !Array.isArray(landbaseEquipsId)
+      ? undefined
+      : effectiveEquips(
+        zip(landbaseEquipsId, onslots).map(([equipId, onslot]) =>
+          equipId <= 0
+            ? undefined
+            : modifiedEquipDataSelectorFactory(equipId)({ state, onslot })
         ), slotnum
       )
   ))
@@ -334,7 +378,7 @@ export const fleetShipsDataSelectorFactory = memoize((fleetId) =>
     fleetShipsIdSelectorFactory(fleetId),
   ], (state, fleetShipsId) =>
     !fleetShipsId ? undefined :
-    fleetShipsId.map((shipId) => shipDataSelectorFactory(shipId)(state))
+      fleetShipsId.map((shipId) => shipDataSelectorFactory(shipId)(state))
   ))
 )
 
@@ -346,7 +390,22 @@ export const fleetShipsEquipDataSelectorFactory = memoize((fleetId) =>
     fleetShipsIdSelectorFactory(fleetId),
   ], (state, fleetShipsId) =>
     !fleetShipsId ? undefined :
-    fleetShipsId.map((shipId) => shipEquipDataSelectorFactory(shipId)(state))
+      fleetShipsId.map((shipId) => shipEquipDataSelectorFactory(shipId)(state))
+  ))
+)
+
+// excludes escaped ships
+export const fleetShipsDataWithEscapeSelectorFactory = memoize((fleetId) =>
+  arrayResultWrapper(createSelector([
+    stateSelector,
+    fleetShipsIdSelectorFactory(fleetId),
+  ], (state, fleetShipsId) =>
+    !fleetShipsId ? undefined :
+      fleetShipsId.filter(shipId =>
+        !escapeStatusSelectorFactory(shipId)(state)
+      ).map(shipId =>
+        shipDataSelectorFactory(shipId)(state)
+      )
   ))
 )
 
@@ -356,10 +415,10 @@ export const fleetShipsEquipDataWithEscapeSelectorFactory = memoize((fleetId) =>
     fleetShipsIdSelectorFactory(fleetId),
   ], (state, fleetShipsId) =>
     !fleetShipsId ? undefined :
-    fleetShipsId.filter(shipId =>
-      !escapeStatusSelectorFactory(shipId)(state)
-    ).map(shipId =>
-      shipEquipDataSelectorFactory(shipId)(state)
-    )
+      fleetShipsId.filter(shipId =>
+        !escapeStatusSelectorFactory(shipId)(state)
+      ).map(shipId =>
+        shipEquipDataSelectorFactory(shipId)(state)
+      )
   ))
 )

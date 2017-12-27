@@ -1,6 +1,5 @@
 import { debounce } from 'lodash'
 import { remote } from 'electron'
-import { devicePixelRatioDetector } from './device-pixel-ratio-detector'
 
 const {config, $} = window
 
@@ -9,47 +8,49 @@ $('#layout-css').setAttribute('href',
 
 const poiControlHeight = 30
 const additionalStyle = document.createElement('style')
+let titleBarHeight = config.get('poi.useCustomTitleBar', process.platform === 'win32' || process.platform === 'linux') ? 28 : 0
+const getTitlebarHeight = () => {
+  if ($('title-bar') && getComputedStyle($('title-bar')).display === 'none') {
+    titleBarHeight = 0
+  } else {
+    titleBarHeight = config.get('poi.useCustomTitleBar', process.platform === 'win32' || process.platform === 'linux') ? 28 : 0
+  }
+}
 
 remote.getCurrentWindow().webContents.on('dom-ready', (e) => {
-  document.body.appendChild(additionalStyle)
+  document.head.appendChild(additionalStyle)
 })
 
 const getFlexCSS = ({layout, webviewWidth}) => {
   if (layout === 'horizontal') {
-    return `
-      kan-game {
-        flex: ${webviewWidth};
-      }
-      poi-app {
-        flex: ${window.innerWidth - webviewWidth};
-      }
-    `
+    return `kan-game {
+  flex: ${webviewWidth};
+}
+poi-app {
+  flex: ${window.innerWidth - webviewWidth};
+}`
   }
   return ''
 }
 
 const getToastCSS = ({layout, webviewWidth, webviewHeight}) => {
+  let { innerHeight, innerWidth } = window
+  innerHeight -= titleBarHeight
   if (webviewWidth === 0) {
-    return `
-      .toast-poi {
-        bottom: 12px;
-        right: 12px;
-      }
-    `
+    return `.toast-poi {
+  bottom: 12px;
+  right: 12px;
+}`
   } else if (layout === 'horizontal') {
-    return `
-      .toast-poi {
-        bottom: ${(window.innerHeight - webviewHeight - 30) / 2 + 36}px;
-        right: ${(window.innerWidth - webviewWidth) + 12}px;
-      }
-    `
+    return `.toast-poi {
+  bottom: ${(innerHeight - webviewHeight - 30) / 2 + 36}px;
+  right: ${(innerWidth - webviewWidth) + 12}px;
+}`
   } else {
-    return `
-      .toast-poi {
-        bottom: ${(window.innerHeight - webviewHeight - 30) + 36}px;
-        right: ${(window.innerWidth - webviewWidth) / 2 + 12}px;
-      }
-    `
+    return `.toast-poi {
+  bottom: ${(innerHeight - webviewHeight - 30) + 36}px;
+  right: ${(innerWidth - webviewWidth) / 2 + 12}px;
+}`
   }
 }
 
@@ -66,45 +67,48 @@ const getPluginDropdownCSS = ({webviewWidth, layout, zoomLevel, doubleTabbed}) =
     menuSize = doubleTabbed ? Math.floor(tabWidth / 2) : Math.floor(tabWidth * 0.875)
   }
 
-  return `
-    poi-nav .grid-menu ul[aria-labelledby=plugin-dropdown] {
-      width: ${menuSize}px;
-    }
-    `
+  return `poi-nav .grid-menu ul[aria-labelledby=plugin-dropdown] {
+  width: ${menuSize}px;
+}`
 }
 
 const setCSS = ({webviewWidth, webviewHeight, tabpaneHeight, layout, zoomLevel, doubleTabbed, reversed}) => {
+  getTitlebarHeight()
   // Apply css
+  let { innerHeight } = window
+  innerHeight -= titleBarHeight
   additionalStyle.innerHTML = `
-    poi-app div.poi-app-tabpane {
-      height: ${tabpaneHeight};
-    }
-    poi-main {
-      ${layout === 'horizontal' && reversed && 'flex-flow: row-reverse nowrap;'}
-    }
-    poi-app {
-      top: ${layout === 'vertical' ? `calc(30px * ${zoomLevel - 1})` : 0};
-    }
-    div[role='tooltip'], #poi-app-container, poi-info {
-      ${zoomLevel !== 1 && `transform: scale(${zoomLevel});`}
-    }
-    .poi-control-tooltip {
-      max-height: ${Math.ceil(poiControlHeight / zoomLevel)}px;
-    }
-    #poi-app-container, poi-info {
-      width: calc(100% / ${zoomLevel});
-    }
-    poi-nav poi-nav-tabs .nav .dropdown-menu {
-      max-height: ${tabpaneHeight};
-    }
-    kan-game #webview-wrapper {
-      width: ${webviewWidth}px !important;
-      height: ${webviewHeight}px !important;
-    }
-    ${getFlexCSS({webviewWidth: webviewWidth, layout: layout})}
-    ${getToastCSS({webviewWidth: webviewWidth, webviewHeight: webviewHeight, layout: layout})}
-    ${getPluginDropdownCSS({webviewWidth: webviewWidth, zoomLevel: zoomLevel, layout: layout, doubleTabbed: doubleTabbed})}
-  `
+poi-app {
+  ${layout === 'horizontal' ? "height: 0;\n  width: 0;" : `height: calc(${innerHeight}px - ${webviewHeight}px - 30px * ${zoomLevel});`}
+}
+.kan-game-warpper {
+  height: calc(${webviewHeight}px + 30px * ${zoomLevel});
+}
+poi-app div.poi-app-tabpane {
+  height: ${tabpaneHeight};
+}
+poi-main {
+  ${reversed ? layout === 'horizontal' ? 'flex-flow: row-reverse nowrap;' : 'flex-flow: column-reverse nowrap;' : ''}
+}
+div[role='tooltip'], .poi-app-container, poi-info {
+  ${zoomLevel !== 1 && `transform: scale(${zoomLevel});`}
+}
+.poi-control-tooltip {
+  max-height: ${Math.ceil(poiControlHeight / zoomLevel)}px;
+}
+.poi-app-container, poi-info {
+  width: calc(100% / ${zoomLevel});
+}
+poi-nav poi-nav-tabs .nav .dropdown-menu {
+  max-height: ${tabpaneHeight};
+}
+kan-game #webview-wrapper {
+  width: ${webviewWidth}px !important;
+  height: ${webviewHeight}px !important;
+}
+${getFlexCSS({webviewWidth: webviewWidth, layout: layout})}
+${getToastCSS({webviewWidth: webviewWidth, webviewHeight: webviewHeight, layout: layout})}
+${getPluginDropdownCSS({webviewWidth: webviewWidth, zoomLevel: zoomLevel, layout: layout, doubleTabbed: doubleTabbed})}`
 
   // Resize when window size smaller than webview size
   if (layout === 'vertical' && webviewWidth > window.innerWidth) {
@@ -125,7 +129,7 @@ const setCSS = ({webviewWidth, webviewHeight, tabpaneHeight, layout, zoomLevel, 
   // Adjust webview height & position
   if (layout === 'horizontal') {
     $('kan-game #webview-wrapper').style.marginLeft = '0'
-    $('kan-game').style.marginTop = `${Math.max(0, Math.floor((window.innerHeight - webviewHeight - poiControlHeight * zoomLevel) / 2.0))}px`
+    $('kan-game').style.marginTop = `${Math.max(0, Math.floor((innerHeight - webviewHeight - poiControlHeight * zoomLevel) / 2.0))}px`
   } else {
     $('kan-game #webview-wrapper').style.marginLeft = `${Math.max(0, Math.floor((window.innerWidth - webviewWidth) / 2.0))}px`
     $('kan-game').style.marginTop = '0'
@@ -142,37 +146,34 @@ const setCSS = ({webviewWidth, webviewHeight, tabpaneHeight, layout, zoomLevel, 
 const setCSSDebounced = debounce(setCSS, 200)
 
 const adjustSize = () => {
-  const { devicePixelRatio } = window
   const layout = config.get('poi.layout', 'horizontal')
   const reversed = config.get('poi.reverseLayout', false)
   const zoomLevel = config.get('poi.zoomLevel', 1)
   const doubleTabbed = config.get('poi.tabarea.double', false)
   const panelMinSize = config.get('poi.panelMinSize', 1)
   let webviewWidth = config.get('poi.webview.width', -1)
-  let webviewHeight = Math.min((window.innerHeight - poiControlHeight * zoomLevel) * devicePixelRatio , Math.round(webviewWidth / 800.0 * 480.0))
+  let webviewHeight = Math.min(window.innerHeight - poiControlHeight * zoomLevel - titleBarHeight , Math.round(webviewWidth / 800.0 * 480.0))
   const useFixedResolution = (webviewWidth !== -1)
+  let { innerHeight } = window
+  innerHeight -= titleBarHeight
 
   // Calculate webview size
   if (!useFixedResolution) {
     if (layout === 'horizontal') {
-      webviewHeight = window.innerHeight - poiControlHeight * zoomLevel
+      webviewHeight = innerHeight - poiControlHeight * zoomLevel
       webviewWidth = Math.round(webviewHeight / 480.0 * 800.0)
     } else {
       webviewWidth = window.innerWidth
       webviewHeight = Math.round(webviewWidth / 800.0 * 480.0)
     }
-  } else {
-    // HiDPI fix
-    webviewWidth = Math.round(webviewWidth / devicePixelRatio)
-    webviewHeight = Math.round(webviewHeight / devicePixelRatio)
   }
 
   // Set a smaller webview size if it takes too much place
   let cap
   if (layout === 'vertical') {
     cap = Math.ceil(200 * panelMinSize * zoomLevel)
-    if (window.innerHeight - webviewHeight < cap) {
-      webviewHeight = window.innerHeight - cap
+    if (innerHeight - webviewHeight < cap) {
+      webviewHeight = innerHeight - cap
       webviewWidth = Math.round(webviewHeight / 480.0 * 800.0)
     }
   } else {
@@ -183,17 +184,17 @@ const adjustSize = () => {
     }
     if (window.innerWidth - webviewWidth < cap) {
       webviewWidth = window.innerWidth - cap
-      webviewHeight = Math.min(window.innerHeight - poiControlHeight * zoomLevel, Math.round(webviewWidth / 800.0 * 480))
+      webviewHeight = Math.min(innerHeight - poiControlHeight * zoomLevel, Math.round(webviewWidth / 800.0 * 480))
     }
   }
 
   // Calculate tabpanes' height
   let tabpaneHeight
   if (layout === 'horizontal') {
-    tabpaneHeight = `${window.innerHeight / zoomLevel - poiControlHeight * zoomLevel}px`
+    tabpaneHeight = `${innerHeight / zoomLevel - poiControlHeight * zoomLevel}px`
   }
   else {
-    tabpaneHeight = `${(window.innerHeight - webviewHeight - poiControlHeight * zoomLevel) / zoomLevel - poiControlHeight * zoomLevel}px`
+    tabpaneHeight = `${(innerHeight - webviewHeight - poiControlHeight * zoomLevel) / zoomLevel - poiControlHeight * zoomLevel}px`
   }
 
   // Update redux store
@@ -202,7 +203,7 @@ const adjustSize = () => {
     value: {
       window: {
         width: window.innerWidth,
-        height: window.innerHeight,
+        height: innerHeight,
       },
       webview: {
         width: webviewWidth,
@@ -263,12 +264,22 @@ config.on('config.set', (path, value) => {
     break
   }
   case 'poi.layout': {
-    const resizable = remote.getCurrentWindow().isResizable()
-    remote.getCurrentWindow().setResizable(true)
+    const current = remote.getCurrentWindow()
+    const resizable = current.isResizable()
+    const maximizable = current.isMaximizable()
+    const fullscreenable = current.isFullScreenable()
+    current.setResizable(true)
+    current.setMaximizable(true)
+    current.setFullScreenable(true)
+
     changeBounds()
     // window.dispatchEvent(new Event('resize'))
     $('#layout-css').setAttribute('href', `./assets/css/layout.${value}.css`)
-    remote.getCurrentWindow().setResizable(resizable)
+
+    current.setResizable(resizable)
+    current.setMaximizable(maximizable)
+    current.setFullScreenable(fullscreenable)
+
     adjustSize()
     break
   }
@@ -276,6 +287,3 @@ config.on('config.set', (path, value) => {
     break
   }
 })
-
-const detector = new devicePixelRatioDetector()
-detector.on('change', adjustSize)

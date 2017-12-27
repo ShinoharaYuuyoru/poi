@@ -52,7 +52,7 @@ remote.getCurrentWindow().on('close', (e) => {
 
 //### Executing code ###
 
-export const store = window.dbg.isEnabled() ?
+export const store = (window.dbg && window.dbg.isEnabled()) ?
   createStore(
     reducerFactory(),
     storeCache,
@@ -86,7 +86,7 @@ window.getStore = (path) => {
 const solveConfSet = (path, value) => {
   const details = {
     path: path,
-    value: JSON.parse(JSON.stringify(value)),
+    value: typeof value === 'undefined' ? undefined : JSON.parse(JSON.stringify(value)),
   }
   store.dispatch(onConfigChange(details))
 }
@@ -95,6 +95,13 @@ config.addListener('config.set', solveConfSet)
 window.addEventListener('unload', (e) => {
   config.removeListener('config.set', solveConfSet)
 })
+
+const clone = obj => JSON.parse(JSON.stringify(obj))
+const ipc = remote.require('./lib/ipc')
+if (!window.isMain) {
+  store.dispatch({ type: '@@initIPC', content: clone(ipc.list()) })
+}
+ipc.on('update', action => store.dispatch(action))
 
 // When any targetPath is modified, store it into localStorage
 if (window.isMain)

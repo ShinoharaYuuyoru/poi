@@ -10,7 +10,6 @@
   "Open cache dir": "Open cache dir",
   "Open screenshot dir": "Open screenshot dir",
   "Failed. Perhaps you don't have permission to it.": "Failed. Perhaps you don't have permission to it.",
-  "Open cache dir": "Open cache dir",
   "Volume off": "Volume off",
   "Volume on": "Volume on",
   "Volume": "Volume",
@@ -47,7 +46,9 @@
   "AntiAir": "AntiAir",
   "Armor": "Armor",
   "Luck": "Luck",
-
+  "Website requires login": "Website requires login",
+  "Username":"Username",
+  "Password":"Password",
   "RefreshGameDialogTip": {
       "text1": "Tip: Right clicking on this button reloads Flash and Left clicking with Shift key pressed refreshes the page, both are ",
       "b1": "without confirmation",

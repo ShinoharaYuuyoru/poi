@@ -15,7 +15,7 @@ import PluginWrap from './plugin-wrapper'
 
 import { isInGame } from 'views/utils/game-utils'
 
-const {i18n, dbg, dispatch, config} = window
+const {i18n, dispatch, config} = window
 const __ = i18n.others.__.bind(i18n.others)
 
 
@@ -63,26 +63,26 @@ const TabContentsUnion = connect(
     const prevKey = this.prevKey()
     return (
       <div className='poi-tab-contents'>
-      {
-        Children.map(this.props.children, (child, index) => {
-          if (child.key === activeKey)
-            onTheLeft = false
-          const positionLeft = child.key === activeKey ?  '0%'
-            : onTheLeft ? '-100%' : '100%'
-          const tabClassName = classNames("poi-tab-child-positioner", {
-            'poi-tab-child-positioner-transition': (child.key === activeKey || child.key === prevKey) && this.props.enableTransition,
-            'transparent': child.key !== activeKey,
-          })
-          return (
-            <div className='poi-tab-child-sizer'>
-              <div className={tabClassName}
-                style={{transform: `translateX(${positionLeft})`}}>
-                {child}
+        {
+          Children.map(this.props.children, (child, index) => {
+            if (child.key === activeKey)
+              onTheLeft = false
+            const positionLeft = child.key === activeKey ?  '0%'
+              : onTheLeft ? '-100%' : '100%'
+            const tabClassName = classNames("poi-tab-child-positioner", {
+              'poi-tab-child-positioner-transition': (child.key === activeKey || child.key === prevKey) && this.props.enableTransition,
+              'transparent': child.key !== activeKey,
+            })
+            return (
+              <div className='poi-tab-child-sizer'>
+                <div className={tabClassName}
+                  style={{transform: `translateX(${positionLeft})`}}>
+                  {child}
+                </div>
               </div>
-            </div>
-          )
-        })
-      }
+            )
+          })
+        }
       </div>
     )
   }
@@ -97,10 +97,7 @@ export default connect(
     useGridMenu: get(state.config, 'poi.tabarea.grid', navigator.maxTouchPoints !== 0),
     activeMainTab: get(state.ui, 'activeMainTab', 'mainView'),
     activePluginName: get(state.ui, 'activePluginName', ''),
-  }),
-  undefined,
-  undefined,
-  {pure: true}
+  })
 )(class ControlledTabArea extends PureComponent {
   static propTypes = {
     plugins: PropTypes.array.isRequired,
@@ -109,23 +106,17 @@ export default connect(
     activeMainTab: PropTypes.string.isRequired,
     activePluginName: PropTypes.string.isRequired,
   }
-  componentWillUpdate(nextProps, nextState) {
-    this.nowTime = (new Date()).getTime()
-  }
-  componentDidUpdate(prevProps, prevState) {
-    const cur = (new Date()).getTime()
-    dbg.extra('moduleRenderCost').log(`the cost of tab-module's render: ${cur-this.nowTime}ms`)
-  }
-  dispatchTabChangeEvent = (tabInfo) =>
+  dispatchTabChangeEvent = (tabInfo, autoSwitch=false) =>
     dispatch({
       type: '@@TabSwitch',
       tabInfo,
+      autoSwitch,
     })
-  selectTab = (key) => {
+  selectTab = (key, autoSwitch=false) => {
     if (key == null)
       return
     let tabInfo = {}
-    const mainTabKeyUnion = this.props.doubleTabbed ? this.refs.mainTabKeyUnion : this.refs.tabKeyUnion
+    const mainTabKeyUnion = this.props.doubleTabbed ? this.mainTabKeyUnion : this.tabKeyUnion
     const mainTabInstance = mainTabKeyUnion.getWrappedInstance()
     if (mainTabInstance.findChildByKey(mainTabInstance.props.children, key)) {
       tabInfo = {
@@ -133,7 +124,7 @@ export default connect(
         activeMainTab: key,
       }
     }
-    const tabKeyUnionInstance = this.refs.tabKeyUnion.getWrappedInstance()
+    const tabKeyUnionInstance = this.tabKeyUnion.getWrappedInstance()
     if ((!['mainView', 'shipView', 'settings'].includes(key)) &&
       tabKeyUnionInstance.findChildByKey(tabKeyUnionInstance.props.children, key)) {
       tabInfo = {
@@ -141,7 +132,7 @@ export default connect(
         activePluginName: key,
       }
     }
-    this.dispatchTabChangeEvent(tabInfo)
+    this.dispatchTabChangeEvent(tabInfo, autoSwitch)
   }
   handleSelectTab = (key) => {
     this.selectTab(key)
@@ -177,7 +168,7 @@ export default connect(
     this.handleSetTabOffset(1)
   }
   handleSetTabOffset = (offset) => {
-    const tabKeyUnionInstance = this.refs.tabKeyUnion.getWrappedInstance()
+    const tabKeyUnionInstance = this.tabKeyUnion.getWrappedInstance()
     const childrenKey = tabKeyUnionInstance.childrenKey(tabKeyUnionInstance.props.children)
     const nowIndex = childrenKey.indexOf(this.props.doubleTabbed ? this.props.activePluginName : this.props.activeMainTab)
     this.selectTab(childrenKey[(nowIndex + childrenKey.length + offset) % childrenKey.length])
@@ -235,7 +226,7 @@ export default connect(
           }
         }
       }
-      this.selectTab(toSwitch)
+      this.selectTab(toSwitch, true)
     }
   }
   componentWillReceiveProps(nextProps) {
@@ -271,7 +262,7 @@ export default connect(
     )
   }
   render() {
-    const navClass = classNames({
+    const navClass = classNames('top-nav', {
       'grid-menu': this.props.useGridMenu,
     })
     const tabbedPlugins = this.tabbedPlugins()
@@ -318,15 +309,15 @@ export default connect(
             <FontAwesome key={0} name='cog' />
           </NavItem>
         </Nav>
-        <TabContentsUnion ref='tabKeyUnion' activeTab={this.props.activeMainTab}>
-          <div id={mainview.name} className="poi-app-tabpane" key='mainView'>
+        <TabContentsUnion ref={(ref) => { this.tabKeyUnion = ref }} activeTab={this.props.activeMainTab}>
+          <div id={mainview.name} className={classNames(mainview.name, "poi-app-tabpane")} key='mainView'>
             <mainview.reactClass />
           </div>
-          <div id={shipview.name} className="poi-app-tabpane" key='shipView'>
+          <div id={shipview.name} className={classNames(shipview.name, "poi-app-tabpane")} key='shipView'>
             <shipview.reactClass />
           </div>
           {pluginContents}
-          <div id={settings.name} className="poi-app-tabpane" key='settings'>
+          <div id={settings.name} className={classNames(settings.name, "poi-app-tabpane")} key='settings'>
             <settings.reactClass />
           </div>
         </TabContentsUnion>
@@ -346,15 +337,15 @@ export default connect(
             </NavItem>
           </Nav>
           <TabContentsUnion
-            ref='mainTabKeyUnion'
+            ref={(ref) => {this.mainTabKeyUnion = ref }}
             activeTab={this.props.activeMainTab}>
-            <div id={mainview.name} className="poi-app-tabpane" key='mainView'>
+            <div id={mainview.name} className={classNames(mainview.name, "poi-app-tabpane")} key='mainView'>
               <mainview.reactClass activeMainTab={this.props.activeMainTab} />
             </div>
-            <div id={shipview.name} className="poi-app-tabpane" key='shipView'>
+            <div id={shipview.name} className={classNames(shipview.name, "poi-app-tabpane")} key='shipView'>
               <shipview.reactClass activeMainTab={this.props.activeMainTab} />
             </div>
-            <div id={settings.name} className="poi-app-tabpane" key='settings'>
+            <div id={settings.name} className={classNames(settings.name, "poi-app-tabpane")} key='settings'>
               <settings.reactClass activeMainTab={this.props.activeMainTab}/>
             </div>
           </TabContentsUnion>
@@ -363,10 +354,10 @@ export default connect(
           <Nav bsStyle="tabs" onSelect={this.handleSelectTab} id='split-plugin-nav' className={navClass}>
             <NavDropdown id='plugin-dropdown' pullRight onSelect={this.handleSelectDropdown}
               title={(activePlugin || {}).displayName || defaultPluginTitle}>
-            {pluginDropdownContents}
+              {pluginDropdownContents}
             </NavDropdown>
           </Nav>
-          <TabContentsUnion ref='tabKeyUnion'
+          <TabContentsUnion ref={(ref) => { this.tabKeyUnion = ref }}
             activeTab={this.props.activePluginName}>
             {pluginContents}
           </TabContentsUnion>

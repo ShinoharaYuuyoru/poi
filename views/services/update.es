@@ -1,66 +1,86 @@
 import React from 'react'
-import { shell } from 'electron'
+import { shell, remote } from 'electron'
 import semver from 'semver'
-import Promise from 'bluebird'
 import Markdown from 'react-remarkable'
+import fetch from 'node-fetch'
 
 const {POI_VERSION, i18n, toggleModal, config, language} = window
 const __ = i18n.others.__.bind(i18n.others)
 
-const request = Promise.promisifyAll(require('request'))
-const requestAsync = Promise.promisify(request, {multiArgs: true})
+const fetchHeader = new Headers()
+fetchHeader.set("Cache-Control", "max-age=0")
+fetchHeader.set('User-Agent', `poi v${POI_VERSION}`)
+const defaultFetchOption = {
+  method: "GET",
+  cache: "default",
+  headers: fetchHeader,
+}
 
-const {error} = require('../../lib/utils')
-
+const { updater } = process.platform !== 'linux' ? remote.require('./lib/updater') : {}
 const LANG = ['zh-CN', 'zh-TW', 'en-US']
-
-const doUpdate = () =>
-  shell.openExternal('https://poi.io')
-
-const doUpdateGithub = () =>
-  shell.openExternal('https://github.com/poooi/poi/releases')
-
-const checkUpdate = async () => {
-  let response
-  let body
-  try {
-    [response, body] = await requestAsync(`https://${global.SERVER_HOSTNAME}/update/latest.json`, {
-      method: 'GET',
-      json: true,
-      headers: {
-        'User-Agent': `poi v${POI_VERSION}`,
-      },
-    })
-  } catch (e) {
-    error(e.stack)
-    console.warn('Check update error.')
+const doUpdate = async () => {
+  if (process.platform == 'win32') {
+    try {
+      await updater.checkForUpdates()
+      await updater.downloadUpdate()
+    } catch (e) {
+      window.toast(__('Please try again or download manually.'), {
+        type: 'danger',
+        title: __('Update failed'),
+      })
+    }
   }
+}
 
-  if ((response || {}).statusCode === 200){
-    const version = body.version
+if (process.platform === 'win32') {
+  updater.on('update-available', () => {
+    // eslint-disable-next-line no-console
+    console.log('Update from poi.io available')
+  })
+
+  updater.on('update-downloaded', () => {
+    window.toast(__('Quit app and install updates'), {
+      type: 'success',
+      title: __('Update successful'),
+    })
+  })
+
+  updater.on('update-not-available', () => {
+    console.warn('Update from poi.io not available')
+  })
+
+  updater.on('error', (event, error) => {
+    window.toast(__('Please try again or download manually'), {
+      type: 'danger',
+      title: __('Update failed'),
+    })
+  })
+}
+
+export const checkUpdate = async () => {
+  const betaChannel = config.get('poi.betaChannel', false)
+  const versionInfo = await fetch(`https://${global.SERVER_HOSTNAME}/update/latest.json`, defaultFetchOption)
+    .then(res => res.json())
+    .catch(e => {
+      console.warn('Check update error.', e.stack)
+      return {}
+    })
+  if (versionInfo.version) {
+    const version = betaChannel && semver.gt(versionInfo.betaVersion, versionInfo.version) ? versionInfo.betaVersion || 'v0.0.0' : versionInfo.version
+    const channel = version.includes('beta') ? '-beta' : ''
+    // eslint-disable-next-line no-console
     console.log(`Remote version: ${version}. Current version: ${POI_VERSION}`)
     const knownVersion = config.get('poi.update.knownVersion', POI_VERSION)
 
     if (semver.lt(POI_VERSION, version) && semver.lt(knownVersion, version)) {
-      let resp
-      let log
-      try {
-        const currentLang = LANG.includes(language) ? language : 'en-US'
-        ;[resp, log] = await requestAsync(`https://${global.SERVER_HOSTNAME}/update/${currentLang}.md`, {
-          method: 'GET',
-          headers: {
-            'User-Agent': `poi v${POI_VERSION}`,
-          },
-        })
-        if ((resp || {}).statusCode != 200) {
+      const currentLang = LANG.includes(language) ? language : 'en-US'
+      const log = await fetch(`https://${global.SERVER_HOSTNAME}/update/${currentLang}${channel}.md`, defaultFetchOption)
+        .then(res => res.text())
+        .catch(res => {
           console.warn('fetch update log error')
-          log = ''
-        }
-        toggleUpdate(version, log)
-      } catch (e) {
-        error(e.stack)
-        console.warn('fetch update log error')
-      }
+          return ""
+        })
+      toggleUpdate(version, log)
     }
   }
 }
@@ -81,16 +101,18 @@ const toggleUpdate = (version, log) => {
       style: 'success',
     },
     {
-      name: `${__('Download latest version')} (${__('Aliyun')})`,
-      func: doUpdate,
-      style: 'primary',
-    },
-    {
-      name: `${__('Download latest version')} (Github)`,
-      func: doUpdateGithub,
+      name: `${__('Manually download')}`,
+      func: () => shell.openExternal('https://poi.io'),
       style: 'primary',
     },
   ]
+  if (process.platform === 'win32') {
+    footer.push({
+      name: `${__('Auto update')}`,
+      func: doUpdate,
+      style: 'primary',
+    })
+  }
   toggleModal(title, content, footer)
 }
 

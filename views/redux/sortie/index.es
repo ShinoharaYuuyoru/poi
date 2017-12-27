@@ -1,8 +1,11 @@
+import { isArray, get } from 'lodash'
+
 /* FORMAT
  *   combinedFlag:                      // api_combined_flag
  *   sortieStatus: [false|true] * 4     // Whether a fleet is in sortie
  *   escapedPos: [] | [idx]             // Array of escapeIdx-1 and towIdx-1
- *     // 0 for fleet1Pos1, 6 for fleet2Pos1, ..., 23 for fleet4Pos6
+ *     // It is based on current sortie fleet (flatten if combined fleet)
+ *     // Be care for the existence of 7 ship fleet
  *   _toEscapeIdx: [idx]                // Tempvar. As in api_escape but -1
  *   item:                              // item drop or lost at node, undefined if no drop / lost, {0: 0} if Tanaka loves you
  *   itemHistory:                       // Array of drop or lost history, added only when it happens, does not match spotHistory
@@ -18,6 +21,25 @@ const initState = {
   spotHistory: [],
   item: null,
   itemHistory: [],
+}
+
+const ensureArray = x => isArray(x) ? x : [x]
+
+const getItem = ({ api_itemget = [], api_happening = {}, api_itemget_eo_comment = {} }) => {
+  const item = {}
+
+  ensureArray(api_itemget).concat(api_itemget_eo_comment).forEach(({ api_id = 0, api_getcount = 0 } = {}) => {
+    if (api_id) {
+      item[api_id] = (item[api_id] || 0) + api_getcount
+    }
+  })
+
+  const { api_icon_id = 0, api_count = 0 } = api_happening
+  if (api_icon_id) {
+    item[api_icon_id] = (item[api_icon_id] || 0) - api_count
+  }
+
+  return Object.keys(item).length ? item : undefined
 }
 
 export function reducer(state=initState, {type, path, postBody, body}) {
@@ -45,9 +67,9 @@ export function reducer(state=initState, {type, path, postBody, body}) {
     }
     if ((body.api_escape_flag != null) && body.api_escape_flag > 0) {
       _toEscapeIdx = [
-        body.api_escape.api_escape_idx[0] - 1,
-        body.api_escape.api_tow_idx[0] - 1,
-      ]
+        get(body.api_escape, ['api_escape_idx', 0]) - 1,
+        get(body.api_escape, ['api_tow_idx', 0]) - 1,
+      ].filter(Number.isFinite)
     }
     return {
       ...state,
@@ -56,6 +78,7 @@ export function reducer(state=initState, {type, path, postBody, body}) {
     }
   }
 
+  case '@@Response/kcsapi/api_req_sortie/goback_port':
   case '@@Response/kcsapi/api_req_combined_battle/goback_port':
     if (state._toEscapeIdx) {
       return {
@@ -76,20 +99,8 @@ export function reducer(state=initState, {type, path, postBody, body}) {
       sortieStatus[postBody.api_deck_id-1] = true
     }
 
-    let item
-    const {api_itemget, api_happening, api_itemget_eo_comment} = body
-    // we assume api_itemget, api_happening and api_itemget_eo_comment will not happen at same node
-    const itemGet = (api_itemget || [])[0] || api_itemget_eo_comment
-    if (typeof itemGet != 'undefined'){
-      item = {
-        [(itemGet.api_id || 0)]: itemGet.api_getcount || 0,
-      }
-    }
-    if (typeof api_happening != 'undefined') {
-      item = {
-        [(api_happening.api_icon_id || 0)]: -api_happening.api_count || 0, 
-      }
-    }
+    const item = getItem(body)
+
     return {
       ...state,
       sortieMapId: mapId,
@@ -106,19 +117,9 @@ export function reducer(state=initState, {type, path, postBody, body}) {
   }
 
   case '@@Response/kcsapi/api_req_map/next': {
-    let item
-    const {api_itemget, api_happening, api_itemget_eo_comment} = body
-    // we assume api_itemget, api_happening and api_itemget_eo_comment will not happen at same node
-    const itemGet = (api_itemget || [])[0] || api_itemget_eo_comment
-    if (typeof itemGet != 'undefined'){
-      item = {
-        [(itemGet.api_id || 0)]: itemGet.api_getcount || 0,
-      }
-    } else if (typeof api_happening != 'undefined') {
-      item = {
-        [(api_happening.api_icon_id || 0)]: -api_happening.api_count || 0, 
-      }
-    }
+
+    const item = getItem(body)
+
     return {
       ...state,
       currentNode: body.api_no,
@@ -137,6 +138,13 @@ export function reducer(state=initState, {type, path, postBody, body}) {
     return {
       ...state,
       sortieStatus,
+    }
+  }
+  case '@@Response/kcsapi/api_req_hensei/combined': {
+    const combinedFlag = parseInt(postBody.api_combined_type)
+    return {
+      ...state,
+      combinedFlag,
     }
   }
   }

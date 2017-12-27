@@ -1,6 +1,6 @@
 import fs from 'fs-extra'
 import classnames from 'classnames'
-import React from 'react'
+import React, { PureComponent } from 'react'
 import PropTypes from 'prop-types'
 
 const getClassName = (props, isSVG) => {
@@ -42,20 +42,16 @@ window.addEventListener('unload', (e) => {
   config.removeListener('config.set', setIcon)
 })
 
-export class SlotitemIcon extends React.Component {
+export class SlotitemIcon extends PureComponent {
   static propTypes = {
     slotitemId: PropTypes.number,
     className: PropTypes.string,
+    alt: PropTypes.string,
   }
   state = {
     useSVGIcon: config.get('poi.useSVGIcon', false),
   }
   name = 'SlotitemIcon'
-  shouldComponentUpdate = (nextProps, nextState) => (
-    !(nextProps.slotitemId === this.props.slotitemId &&
-      nextProps.className === this.props.className &&
-      nextState.useSVGIcon === this.state.useSVGIcon)
-  )
   svgPath = () =>
     `${ROOT}/assets/svg/slotitem/${this.props.slotitemId}.svg`
   pngPath = () =>
@@ -81,41 +77,38 @@ export class SlotitemIcon extends React.Component {
     iconConfSetter.unreg(this.key)
   }
   render() {
+    const { alt, slotitemId, className } = this.props
     if (this.state.useSVGIcon) {
-      if (typeof svgAvailableList[this.props.slotitemId] === 'undefined') {
-        svgAvailableList[this.props.slotitemId] = this.getAvailable()
+      if (typeof svgAvailableList[slotitemId] === 'undefined') {
+        svgAvailableList[slotitemId] = this.getAvailable()
       }
     } else {
-      if (typeof pngAvailableList[this.props.slotitemId] === 'undefined') {
-        pngAvailableList[this.props.slotitemId] = this.getAvailable()
+      if (typeof pngAvailableList[slotitemId] === 'undefined') {
+        pngAvailableList[slotitemId] = this.getAvailable()
       }
     }
     if (this.state.useSVGIcon) {
-      return svgAvailableList[this.props.slotitemId]
-      ? <img src={`file://${this.svgPath()}`} className={getClassName(this.props.className, true)} />
-      : <img src={`file://${ROOT}/assets/svg/slotitem/-1.svg`} className={getClassName(this.props.className, true)} />
-    } else if (pngAvailableList[this.props.slotitemId]) {
-      return <img src={`file://${this.pngPath()}`} className={getClassName(this.props.className, false)} />
+      return svgAvailableList[slotitemId]
+        ? <img alt={alt} src={`file://${this.svgPath()}`} className={getClassName(className, true)} />
+        : <img alt={alt} src={`file://${ROOT}/assets/svg/slotitem/-1.svg`} className={getClassName(className, true)} />
+    } else if (pngAvailableList[slotitemId]) {
+      return <img alt={alt} src={`file://${this.pngPath()}`} className={getClassName(className, false)} />
     } else {
-      return <img src={`file://${ROOT}/assets/img/slotitem/-1.png`} className={getClassName(this.props.className, false)} />
+      return <img alt={alt} src={`file://${ROOT}/assets/img/slotitem/-1.png`} className={getClassName(className, false)} />
     }
   }
 }
 
-export class MaterialIcon extends React.Component {
+export class MaterialIcon extends PureComponent {
   static propTypes = {
     materialId: PropTypes.number,
     className: PropTypes.string,
+    alt: PropTypes.string,
   }
   state = {
     useSVGIcon: config.get('poi.useSVGIcon', false),
   }
   name = 'MaterialIcon'
-  shouldComponentUpdate = (nextProps, nextState) => (
-    !(nextProps.materialId === this.props.materialId &&
-      nextProps.className === this.props.className &&
-      nextState.useSVGIcon === this.state.useSVGIcon)
-  )
   setUseSvg = (val) => {
     this.setState({
       useSVGIcon: val,
@@ -135,6 +128,6 @@ export class MaterialIcon extends React.Component {
     } else {
       src = `file://${ROOT}/assets/img/material/0${this.props.materialId}.png`
     }
-    return <img src={src} className={getClassName(this.props.className, this.state.useSVGIcon)} />
+    return <img alt={this.props.alt} src={src} className={getClassName(this.props.className, this.state.useSVGIcon)} />
   }
 }

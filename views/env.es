@@ -3,10 +3,10 @@ require('babel-register')(require('../babel.config'))
 import path from 'path-extra'
 import fs from 'fs-extra'
 import { remote } from 'electron'
-import lodash from 'lodash'        // TODO: Backward compatibility
-import jQuery from 'jquery'
+import lodash from 'lodash'
 import React from 'react'
 import ReactDOM from 'react-dom'
+import createClass from 'create-react-class'
 import FontAwesome  from 'react-fontawesome'
 import * as ReactBootstrap from 'react-bootstrap'
 const { Radio, Checkbox, FormControl } = ReactBootstrap
@@ -21,21 +21,30 @@ window.POI_VERSION = remote.getGlobal('POI_VERSION')
 window.SERVER_HOSTNAME = remote.getGlobal('SERVER_HOSTNAME')
 window.MODULE_PATH = remote.getGlobal('MODULE_PATH')
 window.appIcon = remote.getGlobal('appIcon')
-fs.ensureDirSync(window.PLUGIN_PATH)
-fs.ensureDirSync(path.join(window.PLUGIN_PATH, 'node_modules'))
 window.isSafeMode = remote.getGlobal('isSafeMode')
+window.isDevVersion = remote.getGlobal('isDevVersion')
+
+// Temp: remove package-lock.json of plugin folder
+fs.remove(path.join(window.PLUGIN_PATH, 'package-lock.json'))
+
+if (window.isMain) {
+  // Plugins
+  fs.ensureDirSync(window.PLUGIN_PATH)
+  fs.ensureDirSync(path.join(window.PLUGIN_PATH, 'node_modules'))
+  // Debug
+  window.dbg = require(path.join(window.ROOT, 'lib', 'debug'))
+  window.dbg.init()
+}
 
 // Add ROOT to `require` search path
-require('module').globalPaths.push(window.ROOT)
+require('module').globalPaths.unshift(window.ROOT)
 
 // Shortcuts and Components
-window.dbg = require(path.join(window.ROOT, 'lib', 'debug'))
-window.dbg.init()
 window._ = lodash           // TODO: Backward compatibility
 window.$ = (param) => document.querySelector(param)
 window.$$ = (param) => document.querySelectorAll(param)
-window.jQuery = jQuery
 window.React = React
+window.React.createClass = createClass
 window.ReactDOM = ReactDOM
 window.FontAwesome = FontAwesome
 window.ReactBootstrap = ReactBootstrap
@@ -93,7 +102,6 @@ require('./env-parts/i18n-config')
 // msg=null: Sound-only notification.
 require('./env-parts/notif-center')
 require('./env-parts/modal')
-require('./env-parts/toast')
 
 // Custom theme
 // You should call window.applyTheme() to apply a theme properly.
@@ -105,5 +113,11 @@ require('./env-parts/data-resolver')
 // Getter
 require('./env-parts/getter')
 
-// add devtool debug message print
-require('./env-parts/devtool-message')
+// Only used by main window
+if (window.isMain) {
+  // Toast
+  const { triggleToast } = require('./env-parts/toast')
+  window.toast = triggleToast
+  // Add devtool debug message print
+  require('./env-parts/devtool-message')
+}

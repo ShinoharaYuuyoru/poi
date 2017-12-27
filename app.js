@@ -8,21 +8,25 @@ global.EXECROOT = path.join(process.execPath, '..')
 global.APPDATA_PATH = path.join(app.getPath('appData'), 'poi')
 global.EXROOT = global.APPDATA_PATH
 global.DEFAULT_CACHE_PATH = path.join(global.EXROOT, 'MyCache')
+global.DEFAULT_SCREENSHOT_PATH = process.platform === 'darwin'
+  ? path.join(app.getPath('home'), 'Pictures', 'Poi')
+  : path.join(global.APPDATA_PATH, 'screenshots')
 global.MODULE_PATH = path.join(global.ROOT, "node_modules")
 
 const {ROOT} = global
 const poiIconPath = path.join(ROOT, 'assets', 'icons',
   process.platform === 'linux' ? 'poi_32x32.png' : 'poi.ico')
 
+require('./lib/module-path').setAllowedPath([ global.ROOT, global.APPDATA_PATH ])
 const config = require('./lib/config')
 const proxy = require('./lib/proxy')
 const shortcut = require('./lib/shortcut')
 const {warn, error} = require('./lib/utils')
 const dbg = require('./lib/debug')
+require('./lib/updater')
 proxy.setMaxListeners(30)
 
 // Disable HA
-
 if (config.get('poi.disableHA', false)) {
   app.disableHardwareAcceleration()
 }
@@ -70,20 +74,7 @@ if (dbg.isEnabled()) {
   process.env.NODE_ENV = 'production'
 }
 
-const platform_to_paths = {
-  'win32-ia32': 'win-ia32',
-  'win32-x64': 'win-x64',
-  'darwin-x64': 'mac-x64',
-  'linux-x64': 'linux-x64',
-}
-
-const flashPath1 = path.join(ROOT, '..', 'PepperFlash', platform_to_paths[`${process.platform}-${process.arch}`])
-const flashPath2 = path.join(ROOT, 'PepperFlash', platform_to_paths[`${process.platform}-${process.arch}`])
-require('flash-player-loader').debug({
-  enable: dbg.isEnabled(),
-  log: dbg._log,
-  error: error,
-}).addSource(flashPath1, '24.0.0.221').addSource(flashPath2, '24.0.0.221').load()
+require('./lib/flash')
 
 let mainWindow, appIcon
 global.mainWindow = mainWindow = null
@@ -92,6 +83,15 @@ global.mainWindow = mainWindow = null
 // https://github.com/electron/electron/issues/7655#issuecomment-259688853
 if (process.platform === 'win32') {
   app.commandLine.appendSwitch('enable-use-zoom-for-dsf', 'false')
+}
+
+// Test: enable JavaScript experimental features
+app.commandLine.appendSwitch('js-flags', "--harmony")
+
+// Cache size
+const cacheSize = parseInt(config.get('poi.cacheSize'))
+if (Number.isInteger(cacheSize)) {
+  app.commandLine.appendSwitch('disk-cache-size', `${1048576 * cacheSize}`)
 }
 
 app.on ('window-all-closed', () => {
@@ -126,17 +126,24 @@ app.on('ready', () => {
     height: height,
     title: 'poi',
     icon: poiIconPath,
-    resizable: config.get('poi.content.resizeable', true),
+    resizable: config.get('poi.content.resizable', true),
     alwaysOnTop: config.get('poi.content.alwaysOnTop', false),
-    titleBarStyle: 'hidden',
+    //workaround for low-alpha title-bar
+    titleBarStyle: process.platform === 'darwin' && Number(require('os').release().split('.')[0]) >= 17 ? null : 'hidden',
+    frame: !config.get('poi.useCustomTitleBar', process.platform === 'win32' || process.platform === 'linux'),
     enableLargerThanScreen: true,
+    maximizable: config.get('poi.content.resizable', true),
+    fullscreenable: config.get('poi.content.resizable', true),
     webPreferences: {
       plugins: true,
     },
+    backgroundColor: process.platform === 'darwin' ? '#00000000' : '#E62A2A2A',
   })
   // Default menu
   mainWindow.reloadArea = 'kan-game webview'
   if (process.platform === 'darwin') {
+    const {touchBar} = require('./lib/touchbar')
+    mainWindow.setTouchBar(touchBar)
     if (/electron$/i.test(process.argv[0])) {
       const icon = nativeImage.createFromPath(`${ROOT}/assets/icons/poi.png`)
       app.dock.setIcon(icon)
@@ -144,7 +151,7 @@ app.on('ready', () => {
   } else {
     mainWindow.setMenu(null)
   }
-  mainWindow.loadURL(`file://${__dirname}/index.html`)
+  mainWindow.loadURL(`file://${__dirname}/index.html${dbg.isEnabled() ? '?react_perf' : ''}`)
   if (config.get('poi.window.isMaximized', false)) {
     mainWindow.maximize()
   }
@@ -178,6 +185,15 @@ app.on('ready', () => {
     })
   }
 })
+// http basic auth
+app.on('login', (event, webContents, request, authInfo, callback) => {
+  event.preventDefault()
+  mainWindow.webContents.send('http-basic-auth', 'login')
+  ipcMain.once ('basic-auth-info', (event, usr, pwd) => {
+    callback(usr, pwd)
+  })
+})
+
 
 ipcMain.on ('refresh-shortcut', () => {
   shortcut.unregister()

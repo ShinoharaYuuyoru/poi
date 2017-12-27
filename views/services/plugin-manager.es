@@ -1,19 +1,26 @@
 import { join } from 'path-extra'
 import semver from 'semver'
 import EventEmitter from 'events'
-import { readJsonSync, accessSync } from 'fs-extra'
-import request from 'request'
-import npm from 'npm'
+import { readJsonSync, accessSync, ensureDir } from 'fs-extra'
 import glob from 'glob'
-import { promisify, promisifyAll } from 'bluebird'
-import { sortBy, map } from 'lodash'
+import _, { sortBy, map, get } from 'lodash'
+import { remote } from 'electron'
+import fetch from 'node-fetch'
 
 const __ = window.i18n.setting.__.bind(window.i18n.setting)
 const {config, toast, proxy, ROOT, PLUGIN_PATH, dispatch, getStore} = window
-const requestAsync = promisify(promisifyAll(request), {multiArgs: true})
+
+const fetchHeader = new Headers()
+fetchHeader.set("Cache-Control", "max-age=0")
+const defaultFetchOption = {
+  method: "GET",
+  cache: "default",
+  headers: fetchHeader,
+}
 
 import {
   installPackage,
+  removePackage,
   readPlugin,
   enablePlugin,
   disablePlugin,
@@ -50,49 +57,56 @@ class PluginManager extends EventEmitter {
     this.DISABLED = 1
     this.NEEDUPDATE = 2
     this.BROKEN = 3
+
+    this.getMirrors()
+    this.loadConfig()
   }
   getPluginPath(packageName) {
     return join(this.pluginRoot, 'node_modules', packageName)
   }
-  initialize() {
+  async initialize() {
     this.getConf()
-    this.getPlugins()
+    await this.getPlugins()
+    this.emit('initialized')
   }
-  readPlugins() {
-    const pluginPaths = glob.sync(this.getPluginPath('poi-plugin-*'))
-    let plugins = pluginPaths.map((pluginPath) => {
-      let plugin = readPlugin(pluginPath)
+  async readPlugins() {
+    const pluginPaths = await new Promise(res => glob(this.getPluginPath('poi-plugin-*'), (err, files) => res(files)))
+    let plugins = await Promise.all(pluginPaths.map(async(pluginPath) => {
+      let plugin = await readPlugin(pluginPath)
       if (plugin.enabled && !window.isSafeMode) {
-        plugin = enablePlugin(plugin)
+        plugin = await enablePlugin(plugin)
       }
       return plugin
-    })
+    }))
     plugins = sortBy(plugins, 'priority')
-    notifyFailed(plugins)
+    notifyFailed(plugins, this.npmConfig)
     dispatch({
       type: '@@Plugin/initialize',
       value: plugins,
     })
   }
   getRequirements() {
-    if (this.requirements == null)
+    if (!this.requirements)
       this.requirements = readJsonSync(this.packagePath)
     return this.requirements
   }
   getMirrors() {
-    if (this.mirrors == null) {
+    if (!this.mirrors) {
       this.mirrors = readJsonSync(this.mirrorPath)
-      const mirrorConf = config.get('packageManager.mirrorName')
-      const mirrorName = Object.keys(this.mirrors).includes(mirrorConf) ? 
-        mirrorConf : ((navigator.language === 'zh-CN') ?  "taobao" : "npm")
-      const proxyConf = config.get("packageManager.proxy", false)
-      const betaCheck = config.get("packageManager.enableBetaPluginCheck", false)
-      this.selectConfig(mirrorName, proxyConf, betaCheck)
     }
     return this.mirrors
   }
+  loadConfig() {
+    const mirrorConf = config.get('packageManager.mirrorName')
+    const mirrorName = Object.keys(this.mirrors).includes(mirrorConf) ?
+      mirrorConf : ((navigator.language === 'zh-CN') ?  "taobao" : "npm")
+    const proxyConf = config.get("packageManager.proxy", false)
+    const betaCheck = config.get("packageManager.enableBetaPluginCheck", false)
+    this.selectConfig(mirrorName, proxyConf, betaCheck, false)
+
+    return this.mirrors
+  }
   selectConfig(name, enable, check) {
-    this.getMirrors()
     if (name) {
       this.config.mirror = this.mirrors[name]
       config.set("packageManager.mirrorName", name)
@@ -114,7 +128,6 @@ class PluginManager extends EventEmitter {
         delete this.npmConfig.http_proxy
       }
     }
-    npm.load(this.npmConfig)
     return this.config
   }
   isMetRequirement(plugin) {
@@ -162,16 +175,15 @@ class PluginManager extends EventEmitter {
     }
     return this.VALID
   }
-  getPlugins() {
+  async getPlugins() {
     if (getStore('plugins').length > 0) {
       return getStore('plugins')
     }
     else {
-      return this.readPlugins()
+      return await this.readPlugins()
     }
   }
   getConf() {
-    this.getMirrors()
     return this.config
   }
   getInstalledPlugins() {
@@ -225,19 +237,26 @@ class PluginManager extends EventEmitter {
     if (plugin.needRollback) {
       return
     }
-    const data = JSON.parse((await requestAsync(`${this.config.mirror.server}${plugin.packageName}/latest`))[1])
-    if (data.error) {
-      console.warn(`Can't find update info of plugin ${plugin.packageName}`, data)
+    const data = await await fetch(`${this.config.mirror.server}${plugin.packageName}/latest`, defaultFetchOption)
+      .then(res => res.ok ? res.json() : undefined)
+      .catch(e => undefined)
+    if (!data || !data.version) {
+      console.warn(`Can't find update info of plugin ${plugin.packageName}`)
       return
     }
+
     const distTag = {
       latest: data.version,
     }
     if (this.config.betaCheck) {
-      const betaData = JSON.parse((await requestAsync(`${this.config.mirror.server}${plugin.packageName}/beta`))[1])
-      Object.assign(distTag, {
-        beta: betaData.version,
-      })
+      const betaData = await fetch(`${this.config.mirror.server}${plugin.packageName}/beta`, defaultFetchOption)
+        .then(res => res.ok ? res.json() : undefined)
+        .catch(e => undefined)
+      if (betaData && betaData.version) {
+        Object.assign(distTag, {
+          beta: betaData.version,
+        })
+      }
     }
     let latest = `${plugin.version}`
     let notCompatible = false
@@ -281,7 +300,6 @@ class PluginManager extends EventEmitter {
   }
 
   async getOutdatedPlugins(isNotif) {
-    this.getMirrors()
     const plugins = this.getInstalledPlugins()
     const outdatedList = (await Promise.all(plugins.map((plugin) =>
       this.getPluginOutdateInfo(plugin).catch((err) => console.error(err.stack))
@@ -295,10 +313,11 @@ class PluginManager extends EventEmitter {
     }
   }
 
-  async installPlugin(packageSource, version) {
+  // possible options:
+  //   skipEnable: true | false, skips enabling the plugin after installation
+  async installPlugin(packageSource, version, options = {}) {
     if (packageSource.includes('@'))
       [packageSource, version] = packageSource.split('@')
-    this.getMirrors()
 
     // 1) See if it is installed by plugin name
     const installingByPluginName = (function () {
@@ -315,17 +334,20 @@ class PluginManager extends EventEmitter {
         value: {packageName: packageSource},
         option: [{path: 'isUpdating', status: true}],
       })
+
     // 2) Install plugin
     try {
-      await installPackage(packageSource, version)
+      await installPackage(packageSource, version, this.npmConfig)
     } catch (e) {
       console.error(e.stack)
       throw e
     }
+
     // 3) Get plugin name
     const packageName = installingByPluginName ? packageSource :
       await findInstalledTarball(join(this.pluginRoot, 'node_modules'), packageSource)
-    // 4) Unload plugin if it's running
+
+      // 4) Unload plugin if it's running
     const nowPlugin = getStore('plugins').find((plugin) => plugin.packageName === packageName)
     if (nowPlugin) {
       try {
@@ -336,9 +358,9 @@ class PluginManager extends EventEmitter {
     }
     // 5) Read plugin and load it
     try {
-      let plugin = readPlugin(this.getPluginPath(packageName))
-      if (plugin.enabled) {
-        plugin = enablePlugin(plugin, false)
+      let plugin = await readPlugin(this.getPluginPath(packageName))
+      if (plugin.enabled || !get(options, 'skipEnable', false)) {
+        plugin = await enablePlugin(plugin, false)
       }
       dispatch({
         type: '@@Plugin/add',
@@ -357,7 +379,6 @@ class PluginManager extends EventEmitter {
   }
 
   async uninstallPlugin(plugin) {
-    this.getMirrors()
     try {
       dispatch({
         type: '@@Plugin/changeStatus',
@@ -374,7 +395,7 @@ class PluginManager extends EventEmitter {
       console.error(error.stack)
     }
     try {
-      await promisify(npm.commands.uninstall)([plugin.packageName])
+      await removePackage(plugin.packageName, this.npmConfig)
       // Make sure the plugin no longer exists in PLUGIN_PATH
       // (unless it's a git repo)
       await safePhysicallyRemove(defaultPluginPath(plugin.packageName))
@@ -383,10 +404,27 @@ class PluginManager extends EventEmitter {
     }
   }
 
-  enablePlugin(plugin) {
+  async gracefulRepair(repair = true) {
+    const plugins = this.getInstalledPlugins()
+    const enabledPlugins = _(plugins).filter(plugin => plugin.enabled).map(plugin => plugin.packageName).value()
+    const disabledPlugins = _(plugins).filter(plugin => !plugin.enabled).map(plugin => plugin.packageName).value()
+    const modulePath = join(PLUGIN_PATH, 'node_modules')
+    await safePhysicallyRemove(modulePath)
+    await ensureDir(modulePath)
+    await Promise.all(plugins.map(plugin => this.uninstallPlugin(plugin)))
+
+    if (!repair) {
+      return
+    }
+
+    await Promise.all(enabledPlugins.map(plugin => this.installPlugin(plugin)))
+    await Promise.all(disabledPlugins.map(plugin => this.installPlugin(plugin, null, { skipEnable: true})))
+  }
+
+  async enablePlugin(plugin) {
     plugin.enabled = true
     if (!plugin.isBroken) {
-      plugin = enablePlugin(plugin)
+      plugin = await enablePlugin(plugin)
     }
     config.set(`plugin.${plugin.id}.enable`, true)
     dispatch({
@@ -395,9 +433,9 @@ class PluginManager extends EventEmitter {
     })
   }
 
-  disablePlugin(plugin) {
+  async disablePlugin(plugin) {
     config.set(`plugin.${plugin.id}.enable`, false)
-    plugin = disablePlugin(plugin)
+    plugin = await disablePlugin(plugin)
     dispatch({
       type: '@@Plugin/add',
       value: plugin,
@@ -423,6 +461,27 @@ const pluginManager = new PluginManager(
   join(ROOT, 'assets', 'data', 'mirror.json')
 )
 
-pluginManager.initialize()
+window.reloadPlugin = async (pkgName, verbose=false) => {
+  const { plugins } = getStore()
+  const plugin = plugins.find(
+    pkg => [pkgName, `poi-plugin-${pkgName}`].includes(pkg.packageName)
+  )
+  if (!plugin) {
+    console.error(`plugin "${pkgName}" not found`)
+    return
+  }
+  await pluginManager.disablePlugin(plugin)
+  if (verbose)
+    // eslint-disable-next-line no-console
+    console.log(`plugin "${plugin.id}" disabled, re-enabling...`)
+  await pluginManager.enablePlugin(plugin)
+  if (verbose)
+    // eslint-disable-next-line no-console
+    console.log(`plugin "${plugin.id}" enabled.`)
+}
+
+window.gracefulResetPlugin = () => pluginManager.gracefulRepair(false)
+
+remote.getCurrentWebContents().once('dom-ready', () => pluginManager.initialize())
 
 export default pluginManager

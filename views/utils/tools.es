@@ -3,6 +3,7 @@
  */
 
 import { isEqual, forEach, keyBy, zip, unzip, sum } from 'lodash'
+import path from 'path'
 
 // For a given array, sum up each position of the subarray respectively.
 // Args:
@@ -43,7 +44,7 @@ export function between(n, min, max) {
   return n >= min && n <= max
 }
 
-// Input: 
+// Input:
 //   buildArray(index, value)
 //     index := Integer
 //     value := anything
@@ -95,7 +96,7 @@ export function pickExisting(state, body) {
 }
 
 // Similar to lodash.set, but if the value needs updating, each object along
-// its path will be shallow-copied instead of modified in-place, therefore 
+// its path will be shallow-copied instead of modified in-place, therefore
 // complying with the regulation of redux.
 export function reduxSet(obj, path, val) {
   const [prop, ...restPath] = path
@@ -160,33 +161,6 @@ export function compareUpdate(prevState, newState, depth=1) {
   })
   return prevState
 }
-/* TEST
-function test(a, b, d) {
-  const c = compareUpdate(a, b, d)
-  console.log(c !== a, c)
-}
-
-test(2, 2)
-// false 2
-test({1:'a'},{2:'b'})
-// true {"1":"a","2":"b"}
-test({1:'a'},{1:'b'})
-// true {"1":"b"}
-test({1:'a'},{1:'a'})
-// false {"1":"a"}
-test({1:{1:2}},{1:{1:2}})
-// false {"1":{"1":2}}
-test({1:{1:[], 2:['g']}},{1:{1:[]}})
-// true {"1":{"1":[]}}
-test({1:{1:[], 2:['g']}},{1:{1:[]}}, 2)
-// false {"1":{"1":[],"2":["g"]}}
-
-let a=[]
-a[1] = {1:2}
-test([{1:1}],a)
-// true [{"1":1},{"1":2}]
-
-*/
 
 function pad(n) {
   return n < 10 ? `0${n}` : n
@@ -214,4 +188,20 @@ export function trimArray(state, comparator) {
   if (Array.isArray(state) && Array.isArray(comparator) && comparator.length < state.length)
     return state.slice(0, comparator.length)
   return state
+}
+
+export const fileUrl = (str = '') => {
+  let pathName = path.resolve(str).replace(/\\/g, '/')
+  if (pathName[0] !== '/') {
+    pathName = '/' + pathName
+  }
+  return 'file://' + pathName
+}
+
+// check if dir is a subdirectory of parent,
+// if parent and dir are the same, also returns true
+export const isSubdirectory = (parent, dir) => {
+  const relative = path.relative(parent, dir)
+  return !relative ||
+    (!relative.startsWith('..') && !path.isAbsolute(relative))
 }
